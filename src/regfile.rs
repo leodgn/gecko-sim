@@ -13,6 +13,28 @@
 //! - une méthode `write(&mut self, num: u8, data: u32)` ;
 //! - x0 doit **toujours** lire 0, même après une écriture dessus (contrainte
 //!   RISC-V : x0 est câblé à zéro dans le vrai hardware).
+pub struct RegisterFile {
+    registers: [u32; 32],
+}
+
+impl RegisterFile {
+    pub fn new() -> Self {
+        Self {
+            registers: [0u32; 32],
+        }
+    }
+
+    pub fn read(&self, num: u8) -> u32 {
+        self.registers[num as usize]
+    }
+
+    pub fn write(&mut self, num: u8, data: u32) {
+        if num == 0 {
+        } else {
+            self.registers[num as usize] = data
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -37,7 +59,11 @@ mod tests {
     fn x0_reste_toujours_zero() {
         let mut rf = RegisterFile::new();
         rf.write(0, 0xDEADBEEF);
-        assert_eq!(rf.read(0), 0, "x0 doit rester câblé à zéro même après écriture");
+        assert_eq!(
+            rf.read(0),
+            0,
+            "x0 doit rester câblé à zéro même après écriture"
+        );
     }
 
     #[test]
