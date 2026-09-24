@@ -35,20 +35,6 @@
 //! (`bits.rs`, `constants.rs`, `instructions.rs` have no references to
 //! replace, they're self-contained — copy them as-is.)
 //!
-//! Once the files are in place, uncomment the module declarations below:
-//!
-//! ```ignore
-//! mod bits;
-//! mod constants;
-//! mod instructions;
-//! mod decode;
-//! mod error;
-//! mod exec;
-//! pub mod traits;
-//!
-//! pub use error::RiscvError;
-//! pub use exec::exec_one;
-//! ```
 //!
 //! **The bug to fix** (see the spec for details): in `exec.rs`, the branch
 //! that distinguishes `add` from `sub` (same `func3`, normally
@@ -56,6 +42,17 @@
 //! of `decode_func7!(ir)`. Search for `FUNC7_SUB` in the copied file, the
 //! faulty `match` is right above it. Leave a comment explaining the fix
 //! once corrected.
+
+mod bits;
+mod constants;
+mod decode;
+mod error;
+mod exec;
+mod instructions;
+pub mod traits;
+
+pub use error::RiscvError;
+pub use exec::exec_one;
 
 #[cfg(test)]
 mod tests {
@@ -71,7 +68,9 @@ mod tests {
 
     impl FakeMemory {
         fn new(size: usize) -> Self {
-            FakeMemory { bytes: vec![0; size] }
+            FakeMemory {
+                bytes: vec![0; size],
+            }
         }
 
         /// Places raw instruction words at addresses 0, 4, 8, ...

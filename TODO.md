@@ -1,164 +1,166 @@
-# Feuille de route — gecko-sim
+# Roadmap — gecko-sim
 
-Pédagogique, pas un plan d'exécution automatique : **c'est toi qui écris le
-code**. Coche au fur et à mesure. Demande de l'aide à n'importe quelle étape
-si tu bloques — l'idée est que je t'explique le *comment* (concepts Rust,
-pièges, API) sans écrire l'implémentation à ta place.
+Pedagogical, not an execution plan: **you write the code**. Check items off
+as you go. Ask for help at any step if you get stuck — the idea is that I
+explain the *how* (Rust concepts, pitfalls, API) without writing the
+implementation for you.
 
-Design complet : `docs/superpowers/specs/2026-09-24-gecko-sim-design.md`.
-Référence matérielle : `ressources/hardware-spec.md`.
+Full design: `docs/superpowers/specs/2026-09-24-gecko-sim-design.md`.
+Hardware reference: `ressources/hardware-spec.md`.
 
 ## 0. Setup
 
-- [x] `cargo init` (crate binaire, pas de workspace).
-- [x] Ajouter `eframe`/`egui` comme dépendance (juste pour vérifier que ça
-      compile et affiche une fenêtre vide — pas de logique encore).
-      `cargo add eframe` : fait. Reste à lancer
-      `cargo run --example eframe_check` (fichier jetable déjà écrit,
-      `examples/eframe_check.rs`) et vérifier que la fenêtre s'ouvre. Une
-      fois confirmé, supprimer `examples/eframe_check.rs`.
-- [x] Récupérer les sources de `lib-rv32-isa` pour préparer le vendoring de
-      l'étape 2 — cloné directement dans `lib-rv32/` à la racine du projet
-      (ajouté à `.gitignore`, ce n'est qu'un dossier de travail temporaire).
+- [x] `cargo init` (binary crate, no workspace).
+- [x] Add `eframe`/`egui` as a dependency (just to check it compiles and
+      shows an empty window — no logic yet).
+      `cargo add eframe`: done. Run `cargo run --example eframe_check`
+      (throwaway file already written, `examples/eframe_check.rs`) and
+      check that the window opens. Once confirmed, delete
+      `examples/eframe_check.rs`.
+- [x] Fetch `lib-rv32-isa`'s sources to prepare vendoring for step 2 —
+      cloned directly into `lib-rv32/` at the project root (added to
+      `.gitignore`, it's just a temporary working directory).
 
-*Concepts Rust : structure d'un crate binaire, `Cargo.toml`, `cargo run`.*
+*Rust concepts: structure of a binary crate, `Cargo.toml`, `cargo run`.*
 
 ## 1. Register file
 
-- [x] `src/regfile.rs` : struct `RegisterFile` (API maison pour l'instant,
-      pas encore le trait de `lib-rv32` — ça vient à l'étape 2), stockage
-      `[u32; 32]`, `x0` toujours à 0 (garanti en ignorant les écritures sur
-      `x0` dans `write`, plutôt que de spécialiser `read`).
-- [x] 4 tests passent (`cargo test`).
+- [x] `src/regfile.rs`: `RegisterFile` struct (home-grown API for now, not
+      yet lib-rv32's trait — that comes in step 2), storage `[u32; 32]`,
+      `x0` always 0 (guaranteed by ignoring writes to `x0` in `write`,
+      rather than special-casing `read`).
+- [x] 4 tests pass (`cargo test`).
 
-*Concepts Rust : `trait` + `impl` pour un type, tableaux fixes `[T; N]`,
+*Rust concepts: `trait` + `impl` for a type, fixed-size arrays `[T; N]`,
 `Result`.*
 
-## 2. Vendorer `isa-sim` + corriger le bug sub/add
+## 2. Vendor `isa-sim` + fix the sub/add bug
 
-- [ ] Copier les fichiers de `lib-rv32-isa/src/` (decode.rs, exec.rs,
-      traits.rs, error.rs, util.rs — ~720 lignes au total) dans un module
-      `src/cpu/` de ton projet. Adapter les imports (plus besoin de
-      `lib_rv32_common`, tout est dans ton crate maintenant).
-- [ ] Localiser le bug dans la branche add/sub de `exec_one` (recherche
-      `FUNC7_SUB`) : le code re-teste `decode_func3!(ir)` au lieu de
-      `decode_func7!(ir)` pour distinguer `add` de `sub`. Corriger, et
-      laisser un commentaire qui explique le bug d'origine (bon pour un
-      rapport de projet : bug trouvé et corrigé dans une lib tierce).
-- [ ] Test : encoder à la main une instruction `sub` (ou utiliser un
-      assembleur RISC-V si tu en as un sous la main), l'exécuter contre
-      un register file bidon, vérifier que le résultat est bien une
-      soustraction et pas une addition.
+- [x] Copy the files from `lib-rv32-isa/src/` (decode.rs, exec.rs,
+      traits.rs, error.rs — plus `bits.rs`/`constants.rs`/`instructions.rs`
+      from `lib-rv32-common/src/`) into a `src/cpu/` module of your
+      project.
+- [x] Adjust imports. Two subtleties found along the way, worth
+      remembering: (1) `#[macro_export]` macros (like `bit_concat!`,
+      `decode_i_imm!`, ...) always land at the actual crate root, never
+      inside the module where they're textually defined — so those
+      specific imports need plain `crate::`, not `crate::cpu::`, unlike
+      every other item; (2) `exec.rs` uses the `log` crate (`cargo add
+      log`), not vendored, just a normal dependency.
+- [x] Fixed the add/sub bug in `exec_one` — turned out to be **two bugs
+      stacked**, not one: the branch matched on `decode_func3!(ir)`
+      instead of `decode_func7!(ir)` (making the `sub` arm unreachable),
+      *and* the `sub` arm itself computed `l.wrapping_add(r)` instead of
+      `l.wrapping_sub(r)` (so fixing only the match wouldn't have been
+      enough). Both fixed, with a comment in `exec.rs` explaining why.
+- [x] `impl cpu::traits::RegisterFile for RegisterFile` added in
+      `src/regfile.rs`, delegating to the existing `read`/`write` methods.
+- [x] All 12 tests pass (`cargo test`), including the sub/add regression
+      test.
 
-*Concepts Rust : modules (`mod`), visibilité (`pub`), macros (tu n'as pas
-besoin de comprendre `macro_rules!` en détail, juste de savoir les
-utiliser).*
+*Rust concepts: modules (`mod`), visibility (`pub`), macros (no need to
+understand `macro_rules!` in depth, just how to use them).*
 
-## 3. Bus mémoire (RAM plate, sans périphériques pour l'instant)
+## 3. Memory bus (flat RAM, no peripherals yet)
 
-- [ ] Écrire un type `Bus` qui implémente le trait `Memory` de `lib-rv32`
-      (`fetch`, `read_word/half_word/byte`, `write_word/half_word/byte`).
-      Pour l'instant : uniquement deux régions RAM plates (voir le plan
-      mémoire dans le spec) — pas encore de dispatch vers les
-      périphériques.
-- [ ] Attention à la traduction adresse → index dans le `Vec`/tableau
-      (l'adresse `0x80000000` ne doit pas être l'index 0 littéral d'un
-      `Vec` de plusieurs Go — calcule un offset par région).
-- [ ] Test : écrire un mot à une adresse, le relire, vérifier l'égalité.
-      Tester aussi `read_byte`/`read_half_word` sur un mot qu'on vient
-      d'écrire (attention à l'endianness — RISC-V est little-endian).
+- [ ] Write a `Bus` type implementing lib-rv32's `Memory` trait (`fetch`,
+      `read_word/half_word/byte`, `write_word/half_word/byte`). For now:
+      just two flat RAM regions (see the memory map in the spec) — no
+      peripheral dispatch yet.
+- [ ] Watch out for the address → index translation into the `Vec`/array
+      (address `0x80000000` must not be the literal index 0 of a
+      multi-gigabyte `Vec` — compute a per-region offset).
+- [ ] Test: write a word at an address, read it back, check equality. Also
+      test `read_byte`/`read_half_word` on a word you just wrote (mind
+      endianness — RISC-V is little-endian).
 
-*Concepts Rust : `Vec<u8>`, indexation, gestion d'erreurs avec `Result`
-pour les accès hors plage.*
+*Rust concepts: `Vec<u8>`, indexing, error handling with `Result` for
+out-of-range accesses.*
 
-## 4. Chargeur de binaire
+## 4. Binary loader
 
-- [ ] Lire un fichier `.bin` (`std::fs::read`) et le copier dans la RAM du
-      `Bus` à partir de `0x80000000`.
-- [ ] Boucle d'exécution minimale : `pc = 0x80000000`, boucle qui appelle
-      `exec_one(&mut pc, &mut bus, &mut regfile)` en `loop {}`, affiche
-      l'erreur et s'arrête si `exec_one` renvoie `Err`.
-- [ ] Test manuel : écrire un mini programme assembleur RISC-V (quelques
-      instructions RV32I), l'assembler en `.bin` (`riscv64-unknown-elf-gcc
-      -march=rv32i -mabi=ilp32 ...` + `objcopy`, voir le Makefile du cours),
-      le charger, vérifier via des logs que les registres ont les bonnes
-      valeurs à la fin.
+- [ ] Read a `.bin` file (`std::fs::read`) and copy it into the `Bus`'s RAM
+      starting at `0x80000000`.
+- [ ] Minimal execution loop: `pc = 0x80000000`, a loop calling
+      `exec_one(&mut pc, &mut bus, &mut regfile)` inside `loop {}`, print
+      the error and stop if `exec_one` returns `Err`.
+- [ ] Manual test: write a tiny RISC-V assembly program (a few RV32I
+      instructions), assemble it into a `.bin` (`riscv64-unknown-elf-gcc
+      -march=rv32i -mabi=ilp32 ...` + `objcopy`, see the course Makefile),
+      load it, check via logs that the registers hold the expected values
+      at the end.
 
-*Concepts Rust : `std::fs`, `io::Result`, boucles infinies contrôlées,
-`std::process::exit` ou `panic!` pour un arrêt propre sur erreur.*
+*Rust concepts: `std::fs`, `io::Result`, controlled infinite loops,
+`std::process::exit` or `panic!` for a clean stop on error.*
 
-## 5. Périphériques (un par un, avec test unitaire à chaque fois)
+## 5. Peripherals (one at a time, with a unit test each time)
 
-Fais-les dans cet ordre (du plus simple au plus utile pour valider vite) :
+Do them in this order (simplest to most useful for fast validation):
 
-- [ ] **`RANDOM`** (`0x40000000`) : xorshift32 avec graine fixe câblée en
-      dur. Test : deux instances fraîches produisent la même séquence de
-      lectures.
-- [ ] **`BUTTONS`** (`0x70000004`) : logique "front descendant" (un clic
-      met le bit à 1, il reste à 1) + "n'importe quelle écriture efface
-      tout le registre". Test : simuler un clic, lire le registre,
-      simuler une écriture CPU, vérifier que tout est à 0.
-- [ ] **`SEVEN_SEGS`** (`0x60000000`) : lecture/écriture normale d'un mot
-      de 4 octets. Test trivial (écrire/relire).
-- [ ] **`LEDS`** (`0x50000000`) : le plus complexe des 4 — décoder les 4
-      cas de sélection ligne/colonne dans `hardware-spec.md` et mettre à
-      jour un framebuffer `[[u8; 12]; 10]` par couleur. Écriture only,
-      lecture renvoie toujours 0. Teste chaque cas de sélection
-      séparément (toutes lignes+colonnes, une colonne, une ligne, une
-      seule LED).
-- [ ] Brancher les 4 périphériques dans `Bus::read_*`/`write_*` par plage
-      d'adresse (remplace le TODO du bus par un vrai dispatch).
+- [ ] **`RANDOM`** (`0x40000000`): xorshift32 with a fixed, hardcoded seed.
+      Test: two fresh instances produce the same sequence of reads.
+- [ ] **`BUTTONS`** (`0x70000004`): "falling edge" logic (a click sets the
+      bit to 1, it stays 1) + "any write clears the whole register". Test:
+      simulate a click, read the register, simulate a CPU write, check
+      everything is 0.
+- [ ] **`SEVEN_SEGS`** (`0x60000000`): normal read/write of a 4-byte word.
+      Trivial test (write/read back).
+- [ ] **`LEDS`** (`0x50000000`): the most complex of the 4 — decode the 4
+      row/column selection cases from `hardware-spec.md` and update a
+      `[[u8; 12]; 10]` framebuffer per color. Write-only, reads always
+      return 0. Test each selection case separately (all rows + all
+      columns, one column, one row, a single LED).
+- [ ] Wire the 4 peripherals into `Bus::read_*`/`write_*` by address range
+      (replace the bus's TODO with real dispatch).
 
-*Concepts Rust : `match` sur des plages/bits, opérations bit à bit (`&`,
-`|`, `<<`, `>>`), tests unitaires (`#[test]`, `assert_eq!`).*
+*Rust concepts: `match` on ranges/bits, bitwise operations (`&`, `|`, `<<`,
+`>>`), unit tests (`#[test]`, `assert_eq!`).*
 
-## 6. Multithreading : CPU en continu + état partagé
+## 6. Multithreading: CPU running continuously + shared state
 
-- [ ] Faire tourner la boucle d'exécution dans un thread dédié
-      (`std::thread::spawn`).
-- [ ] Partager le framebuffer LEDs, l'état 7-seg, et le registre BUTTONS
-      entre le thread CPU et le futur thread UI via `Arc<Mutex<...>>`.
-- [ ] Vérifier que ça compile et tourne sans deadlock (le thread CPU ne
-      doit jamais garder le verrou plus longtemps que nécessaire — prendre
-      le lock, lire/écrire, relâcher, pas de lock qui traverse toute
-      l'itération).
+- [ ] Run the execution loop on a dedicated thread (`std::thread::spawn`).
+- [ ] Share the LED framebuffer, seven-seg state, and `BUTTONS` register
+      between the CPU thread and the future UI thread via
+      `Arc<Mutex<...>>`.
+- [ ] Check it compiles and runs without deadlocking (the CPU thread must
+      never hold the lock longer than needed — take the lock, read/write,
+      release, no lock held across a whole loop iteration).
 
-*Concepts Rust clé pour ce projet : `Arc`, `Mutex`, `std::thread`, `move`
-closures. C'est probablement la partie la plus "nouvelle" si tu viens de
-Scala — pas d'acteurs ici, juste du partage d'état classique verrouillé.*
+*Key Rust concepts for this project: `Arc`, `Mutex`, `std::thread`, `move`
+closures. Probably the most "new" part if you're coming from Scala — no
+actors here, just classic locked shared state.*
 
 ## 7. UI (`egui`/`eframe`)
 
-- [ ] Squelette d'app `eframe` qui tourne en boucle et lit l'état partagé
-      à chaque frame (pas besoin de VSync particulier, `egui` gère ça).
-- [ ] Dessiner la grille de LEDs 12×10 en couleur (rectangles colorés,
-      voir `LedArray.svelte` de l'extension `cs200` pour l'inspiration
-      visuelle exacte si tu veux coller au rendu).
-- [ ] Dessiner les 4 afficheurs 7-segments (table `font_data` dans
-      `gol.s` pour interpréter les motifs de segments).
-- [ ] Dessiner le pavé directionnel (5 boutons) + la deuxième rangée de 5
-      boutons + les dip switches (widget visuel seulement, pas câblé).
-      Boutons cliquables à la souris (mousedown → bit à 1, mouseup/leave
-      → rien de spécial côté émulateur, le bit reste jusqu'à clear CPU).
-- [ ] Bouton "charger un .bin" (file picker ou argument CLI, à toi de
-      choisir) qui (re)lance l'émulation.
+- [ ] Skeleton `eframe` app that loops and reads the shared state each
+      frame (no need for special VSync handling, `egui` takes care of it).
+- [ ] Draw the 12×10 color LED grid (colored rectangles, see
+      `LedArray.svelte` from the `cs200` extension for the exact visual
+      reference if you want to match the look).
+- [ ] Draw the 4 seven-segment displays (`font_data` table in `gol.s` to
+      interpret the segment patterns).
+- [ ] Draw the directional pad (5 buttons) + the second row of 5 buttons +
+      the dip switches (visual widget only, not wired). Buttons clickable
+      with the mouse (mousedown → bit to 1, mouseup/leave → nothing special
+      on the emulator side, the bit stays until a CPU clear).
+- [ ] "Load a .bin" control (file picker or CLI argument, your choice) that
+      (re)starts emulation.
 
-*Concepts Rust : `egui::Context`, immediate mode (le code de dessin
-s'exécute à chaque frame, pas de retained widget tree comme dans une UI
-classique — assez différent de ce que tu as pu voir ailleurs).*
+*Rust concepts: `egui::Context`, immediate mode (drawing code runs every
+frame, no retained widget tree like a classic UI — quite different from
+what you may have seen elsewhere).*
 
-## 8. Test de non-régression avec `gol.s`
+## 8. Regression test with `gol.s`
 
-- [ ] Charger `gol.s` compilé avec `seed0`, exécuter une génération
-      (headless, sans passer par `eframe` — juste la boucle CPU + le
-      framebuffer), vérifier que les 3 formes stables (2 blocs 2×2 + 1
-      ruche) sont identiques avant/après.
+- [ ] Load `gol.s` compiled with `seed0`, run one generation (headless, no
+      `eframe` — just the CPU loop + the framebuffer), check via the LED
+      framebuffer that the 3 still-life shapes (2 2×2 blocks + 1 beehive)
+      are identical before/after.
 
-## 9. Polish (optionnel, une fois que tout marche)
+## 9. Polish (optional, once everything works)
 
-- [ ] Affichage d'erreur propre dans l'UI si le CPU plante (opcode
-      invalide, accès mémoire hors plan mémoire) au lieu d'un crash du
-      process.
-- [ ] Vitesse d'affichage : si le rendu 60 Hz peine à suivre un CPU qui
-      tourne à pleine vitesse, réfléchir à un throttle ou à un simple
-      "dernier état visible" sans bloquer le thread CPU.
+- [ ] Clean error display in the UI if the CPU crashes (invalid opcode,
+      out-of-map memory access) instead of a process crash.
+- [ ] Display speed: if 60 Hz rendering struggles to keep up with a CPU
+      running at full speed, consider a throttle or simply showing the
+      "latest visible state" without blocking the CPU thread.

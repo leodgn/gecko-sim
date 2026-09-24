@@ -1,182 +1,182 @@
 # gecko-sim — Design
 
-Date : 2026-09-24
-Statut : approuvé (voir historique de conversation pour le brainstorm complet)
+Date: 2026-09-24
+Status: approved (see conversation history for the full brainstorm)
 
-## Contexte et but
+## Context and goal
 
-Remplacer `Vtb` (simulateur RTL officiel du cours cs200, EPFL) par un émulateur
-Rust rapide pour itérer sur `ressources/gol.s` (jeu de la vie en assembleur
-RISC-V). `Vtb` prenait 21s/étape, réduit à 2,43s après optimisation — encore
-trop lent. Projet également utilisé comme apprentissage de Rust par l'auteur
-: **priorité à la clarté et à l'idiomatique plutôt qu'à la performance**, le
-volume de calcul réel est faible (dizaines de milliers d'instructions RISC-V
-par étape).
+Replace `Vtb` (the official RTL simulator for EPFL's cs200 course) with a
+fast Rust emulator to iterate on `ressources/gol.s` (game of life in RISC-V
+assembly). `Vtb` took 21s/step, down to 2.43s after optimization — still too
+slow. The project is also used as a Rust learning exercise by the author:
+**clarity and idiomatic style take priority over performance**, the actual
+compute volume is low (tens of thousands of RISC-V instructions per step).
 
-## Décisions de scope (verrouillées par ce document)
+## Scope decisions (locked in by this document)
 
-- Cœur RV32I : **`lib-rv32`** (`trmckay/lib-rv32`, MIT), **vendoré** dans le
-  repo (voir section Cœur RV32I ci-dessous), pas réécrit à la main.
-- Interface : **UI graphique native en Rust (egui/eframe)**, pas de terminal,
-  pas de protocole DAP. Décision explicite : bien qu'il soit techniquement
-  possible de faire parler notre émulateur en Debug Adapter Protocol pour
-  brancher directement l'extension VS Code `cs200` existante dessus (elle
-  lance `Vtb` comme serveur DAP et relaie des événements custom
-  `boardUpdate`/`updateInput` à une webview Svelte), l'auteur préfère
-  construire sa propre UI plutôt que de dépendre de ce protocole.
-- Comportement voulu : **fidèle à l'extension `cs200` visuellement et dans sa
-  logique matérielle**, mais sans les fonctionnalités de debugging
-  (breakpoints, step) — comme une vraie carte qu'on allume et qui exécute son
-  programme immédiatement, en continu, jusqu'à l'arrêt de l'appli.
-- Mode de travail : **l'auteur écrit tout le code lui-même** (apprentissage
-  Rust). Ce document fixe les décisions d'architecture ; `TODO.md` sert de
-  feuille de route pédagogique, sans code.
+- RV32I core: **`lib-rv32`** (`trmckay/lib-rv32`, MIT), **vendored** into the
+  repo (see the RV32I core section below), not rewritten by hand.
+- Interface: **native Rust GUI (egui/eframe)**, no terminal, no DAP
+  protocol. Explicit decision: although it's technically possible to make
+  our emulator speak the Debug Adapter Protocol to attach the existing
+  `cs200` VS Code extension directly to it (it launches `Vtb` as a DAP
+  server and relays custom `boardUpdate`/`updateInput` events to a Svelte
+  webview), the author prefers building their own UI rather than depending
+  on that protocol.
+- Intended behavior: **faithful to the `cs200` extension, visually and in
+  its hardware logic**, but without debugging features (breakpoints, step)
+  — like a real board that's powered on and immediately runs its program,
+  continuously, until the app is closed.
+- Working mode: **the author writes all the code themselves** (Rust
+  learning exercise). This document fixes the architecture decisions;
+  `TODO.md` is the pedagogical roadmap, with no code.
 
-## Cœur RV32I : `lib-rv32` (vendoré, avec correctif)
+## RV32I core: `lib-rv32` (vendored, with a fix)
 
-Spike de vérification effectué (voir historique) :
+Verification spike performed (see conversation history):
 
-- Les traits `Memory`/`RegisterFile` (crate `lib-rv32-isa`, module `traits`)
-  correspondent exactement au point d'accroche prévu : `fetch`,
-  `read_word/half_word/byte`, `write_word/half_word/byte` pour `Memory` ;
-  `read(num)`/`write(num, data)` pour `RegisterFile`.
-- Le cœur d'exécution est une fonction libre `exec_one(pc: &mut u32, mem: &mut
-  M, rf: &mut R) -> Result<(), RiscvError>` — un appel par instruction, aucun
-  état caché. Il ne décode **que** RV32I pur (pas de M/A/C), malgré ce
-  qu'annonce le README du dépôt.
-- **Bug confirmé par exécution réelle** (pas seulement lecture de code) :
-  dans `isa-sim/src/exec.rs`, la distinction `add`/`sub` (même `func3`,
-  distingués normalement par `func7`) teste par erreur `decode_func3!(ir)` au
-  lieu de `decode_func7!(ir)`. Conséquence : **`sub` s'exécute comme `add`**.
-  Vérifié en encodant à la main `sub x5, x6, x7` avec `x6=10, x7=3` : résultat
-  `13` (10+3) au lieu de `7` (10-3).
-  `gol.s` utilise `sub` (ligne 232, décompte du timer de vitesse) — un vrai
-  risque de correctness, pas hypothétique.
-- Dépôt à l'arrêt depuis le 25 août 2021, mainteneur unique, MIT, ~720 lignes
-  pour tout `isa-sim`. Publié sur crates.io (`lib-rv32-isa` 0.2.0,
-  `lib-rv32-common` 0.2.0).
+- The `Memory`/`RegisterFile` traits (`lib-rv32-isa` crate, `traits`
+  module) match exactly the intended hook: `fetch`,
+  `read_word/half_word/byte`, `write_word/half_word/byte` for `Memory`;
+  `read(num)`/`write(num, data)` for `RegisterFile`.
+- The execution core is a free function `exec_one(pc: &mut u32, mem: &mut
+  M, rf: &mut R) -> Result<(), RiscvError>` — one call per instruction, no
+  hidden state. It only decodes pure RV32I (no M/A/C), despite what the
+  repo's README advertises.
+- **Two stacked bugs confirmed by actually running the code** (not just
+  reading it), both in `isa-sim/src/exec.rs`'s `add`/`sub` branch (same
+  `func3`, normally distinguished by `func7`):
+  1. It mistakenly matches on `decode_func3!(ir)` instead of
+     `decode_func7!(ir)`, so the `FUNC7_SUB` arm is unreachable — every
+     add/sub silently falls through to the `add` arm.
+  2. Even the `FUNC7_SUB` arm's body computed `l.wrapping_add(r)` instead
+     of `l.wrapping_sub(r)` — fixing bug 1 alone would not have been
+     enough, `sub` still wouldn't have subtracted.
+  Consequence: **`sub` executes as `add`**. Verified by hand-encoding
+  `sub x5, x6, x7` with `x6=10, x7=3`: result `13` (10+3) instead of `7`
+  (10-3). `gol.s` uses `sub` (line 232, speed timer countdown) — a real
+  correctness risk, not hypothetical.
+- The repo has been dormant since August 25, 2021, single maintainer, MIT,
+  ~720 lines for all of `isa-sim`. Published on crates.io (`lib-rv32-isa`
+  0.2.0, `lib-rv32-common` 0.2.0).
 
-**Décision** : vendorer le code de `lib-rv32-isa` (les ~720 lignes) comme
-module interne du projet (`src/cpu/`), corriger le bug avec un commentaire
-expliquant le correctif. Pas de dépendance sur un dépôt à l'arrêt, code
-entièrement lisible/auditable, correctif documenté et assumé (pas de version
-patchée cachée à livrer).
+**Decision**: vendor `lib-rv32-isa`'s code (~720 lines) as an internal
+project module (`src/cpu/`), fix the bug with a comment explaining it. No
+dependency on a dormant repo, fully readable/auditable code, a documented
+and assumed fix (no hidden patched version to ship).
 
 ## Architecture
 
-Un seul crate binaire (pas de workspace, projet trop petit pour le justifier).
+A single binary crate (no workspace, the project is too small to justify
+one).
 
 ```
 src/
-  main.rs          — point d'entrée : charge le .bin, lance le thread CPU, lance eframe
-  cpu/              — isa-sim vendoré (decode/exec RV32I) + le patch sub/add, documenté
-  regfile.rs        — implémente RegisterFile ([u32; 32], x0 câblé à 0)
-  bus.rs            — implémente Memory : dispatch par plage d'adresse vers RAM ou périphériques
+  main.rs          — entry point: loads the .bin, spawns the CPU thread, runs eframe
+  cpu/              — vendored isa-sim (RV32I decode/exec) + the documented sub/add patch
+  regfile.rs        — implements RegisterFile ([u32; 32], x0 hardwired to 0)
+  bus.rs            — implements Memory: dispatches by address range to RAM or peripherals
   peripherals/
-    leds.rs         — décode les commandes d'écriture, maintient le framebuffer 10×12×3
+    leds.rs         — decodes write commands, maintains the 10×12×3 framebuffer
     seven_segs.rs
-    buttons.rs      — bits + logique "front descendant" + clear-on-any-write
-    random.rs       — xorshift32, graine fixe (même séquence à chaque relance)
-  loader.rs         — lit le .bin, le place à 0x80000000
-  ui.rs             — l'app eframe : dessine LEDs/7-seg/boutons/joystick/dip switches, capture les clics souris
+    buttons.rs      — bits + "falling edge" logic + clear-on-any-write
+    random.rs       — xorshift32, fixed seed (same sequence on every run)
+  loader.rs         — reads the .bin, places it at 0x80000000
+  ui.rs             — the eframe app: draws LEDs/7-seg/buttons/joystick/dip switches, captures mouse clicks
 ```
 
-### Flux d'exécution
+### Execution flow
 
-Au démarrage : chargement du binaire, spawn d'un thread dédié qui boucle
-`exec_one(pc, bus, regfile)` en continu (aussi vite que possible), pendant
-que le thread principal fait tourner `eframe`. État partagé (framebuffer
-LEDs, 7-seg, registre `BUTTONS`) derrière un `Arc<Mutex<...>>` : le thread
-CPU écrit, le thread UI lit à chaque frame (~60 Hz) et écrit les entrées
-utilisateur. Pas de synchronisation fine nécessaire (échelle : dizaines de
-milliers d'instructions par étape de jeu) — clarté avant perf.
+At startup: load the binary, spawn a dedicated thread that loops
+`exec_one(pc, bus, regfile)` continuously (as fast as possible), while the
+main thread runs `eframe`. Shared state (LED framebuffer, 7-seg state,
+`BUTTONS` register) behind an `Arc<Mutex<...>>`: the CPU thread writes, the
+UI thread reads each frame (~60 Hz) and writes user input. No fine-grained
+synchronization needed (scale: tens of thousands of instructions per game
+step) — clarity over performance.
 
-### Point d'entrée
+### Entry point
 
-Le `.bin` est déjà `objcopy`é (format brut, sans table de symboles). Pas
-d'ambiguïté `_start` à résoudre (contrairement à ce que suggérait
-`hardware-spec.md`) : **le PC démarre toujours à `0x80000000`** au
-"power on".
+The `.bin` is already `objcopy`'d (raw format, no symbol table). No `_start`
+ambiguity to resolve (contrary to what `hardware-spec.md` suggested):
+**the PC always starts at `0x80000000`** on "power on".
 
-### Mémoire (`bus.rs`)
+### Memory (`bus.rs`)
 
-Dispatch par plage d'adresse (voir `ressources/hardware-spec.md`, Table 2) :
+Dispatch by address range (see `ressources/hardware-spec.md`, Table 2):
 
-| Adresse | Comportement |
+| Address | Behavior |
 |---|---|
 | `0x40000000` | `RANDOM` (peripheral) |
 | `0x50000000` | `LEDS` (peripheral, write-only) |
 | `0x60000000` | `SEVEN_SEGS` (peripheral) |
 | `0x70000004` | `BUTTONS` (peripheral) |
-| `0x80000000` et suivants | RAM plate (code/data/pile) |
-| `0x90001000`–`0x90001300` | RAM plate (état du jeu, GSA, variables custom) |
-| ailleurs | erreur d'accès mémoire |
+| `0x80000000` and up | flat RAM (code/data/stack) |
+| `0x90001000`–`0x90001300` | flat RAM (game state, GSA, custom variables) |
+| elsewhere | memory access error |
 
-Deux régions RAM séparées (pas un unique `Vec` géant couvrant tout l'espace
-d'adressage 32 bits) : une pour `0x80000000+` (code/data/pile), une pour
-`0x90001000..0x90001300` (état du jeu). Tailles à choisir raisonnablement
-généreuses.
+Two separate RAM regions (not a single giant `Vec` spanning the whole 32-bit
+address space): one for `0x80000000+` (code/data/stack), one for
+`0x90001000..0x90001300` (game state). Sizes chosen reasonably generously.
 
-### Périphériques
+### Peripherals
 
-- **`LEDS` (0x50000000)** — write-only. Chaque écriture est une commande
-  (row/col/couleur/valeur, voir `hardware-spec.md`), pas un état stocké.
-  Framebuffer interne `[[u8; 12]; 10]` par couleur (r/g/b). Lecture renvoie
-  toujours 0.
-- **`SEVEN_SEGS` (0x60000000)** — 4 octets empaquetés dans un mot,
-  lecture/écriture normale (comportement en lecture non documenté dans le
-  PDF → RAM normale par défaut).
-- **`BUTTONS` (0x70000004)** — 10 bits physiques, deux groupes de 5 dans
-  l'UI (comme dans l'extension `cs200`) :
-  - pavé directionnel : JT/JB/JL/JR/JC (bits 4,3,2,1,0)
-  - rangée de boutons : BUTTON_0/BUTTON_1/BUTTON_2 (bits 6,5,7) + 2 bits non
-    nommés dans le template (8,9)
-  Sémantique : un clic souris met le bit à 1 sur le front descendant
-  (relâché→pressé) ; il reste à 1 jusqu'à ce que le CPU écrive n'importe quoi
-  dans le registre (efface tout d'un coup). **Interaction à la souris**
-  (mousedown/mouseup), pas au clavier — fidèle à l'extension `cs200`
-  (composants Svelte `PushButton`/`JoyStick` observés, tous pilotés par la
-  souris).
-- **`RANDOM` (0x40000000)** — xorshift32 (ou LCG) avec **graine fixe câblée
-  en dur** dans le code. Confirmé dans `GameOfLife.pdf` section 3.4.1 : « It
-  is therefore expected that the random number generator will return the
-  same sequence of numbers each time the program is run. » → même séquence
-  à chaque relance de notre émulateur. Pas de tentative de reproduire `Vtb`
-  bit-à-bit (impossible sans son code source RTL).
-- **Dip switches** — affichés dans l'UI pour la fidélité visuelle avec
-  l'extension `cs200` (composant Svelte `dipSwitches`), mais **non câblés à
-  une adresse MMIO** : ni le plan mémoire ni `gol.s` ne les utilisent. Widget
-  interactif sans effet sur l'émulation, documenté comme tel en commentaire.
+- **`LEDS` (0x50000000)** — write-only. Every write is a command
+  (row/col/color/value, see `hardware-spec.md`), not stored state. Internal
+  framebuffer `[[u8; 12]; 10]` per color (r/g/b). Reads always return 0.
+- **`SEVEN_SEGS` (0x60000000)** — 4 bytes packed into a word, normal
+  read/write (read behavior undocumented in the PDF → normal RAM by
+  default).
+- **`BUTTONS` (0x70000004)** — 10 physical bits, two groups of 5 in the UI
+  (as in the `cs200` extension):
+  - directional pad: JT/JB/JL/JR/JC (bits 4,3,2,1,0)
+  - button row: BUTTON_0/BUTTON_1/BUTTON_2 (bits 6,5,7) + 2 bits unnamed in
+    the template (8,9)
+  Semantics: a mouse click sets the bit to 1 on the falling edge
+  (released→pressed); it stays 1 until the CPU writes anything to the
+  register (clears everything at once). **Mouse interaction**
+  (mousedown/mouseup), not keyboard — faithful to the `cs200` extension
+  (Svelte components `PushButton`/`JoyStick` observed, all mouse-driven).
+- **`RANDOM` (0x40000000)** — xorshift32 (or LCG) with a **fixed, hardcoded
+  seed**. Confirmed in `GameOfLife.pdf` section 3.4.1: "It is therefore
+  expected that the random number generator will return the same sequence
+  of numbers each time the program is run." → same sequence on every run of
+  our emulator. No attempt to reproduce `Vtb` bit-for-bit (impossible
+  without its RTL source).
+- **Dip switches** — displayed in the UI for visual fidelity with the
+  `cs200` extension (Svelte component `dipSwitches`), but **not wired to
+  any MMIO address**: neither the memory map nor `gol.s` use them.
+  Interactive widget with no effect on emulation, documented as such in a
+  comment.
 
-### Gestion d'erreurs
+### Error handling
 
-Une erreur CPU (opcode invalide, accès mémoire hors plan mémoire) arrête le
-thread CPU et remonte l'erreur de façon visible dans l'UI — pas de crash
-silencieux, utile puisque l'outil sert justement à déboguer `gol.s`.
+A CPU error (invalid opcode, out-of-map memory access) stops the CPU thread
+and surfaces the error visibly in the UI — no silent crash, useful since the
+tool exists specifically to debug `gol.s`.
 
 ### Tests
 
-- Tests unitaires par périphérique : décodage `LEDS` (les 4 cas de sélection
-  ligne/colonne), `BUTTONS` (front descendant + clear-on-any-write),
-  `RANDOM` (déterminisme : deux instances fraîches donnent la même
-  séquence).
-- Test de non-régression basé sur `seed0` de `gol.s` (mentionné dans
-  `CLAUDE.md`) : charger `gol.s` compilé, exécuter une génération, vérifier
-  via le framebuffer LEDs que les 3 formes stables (2 blocs 2×2 + 1 ruche)
-  sont identiques avant/après. Faisable en mode headless (le framebuffer est
-  une structure de données pure, testable sans lancer `eframe`).
-- Test du correctif `sub`/`add` sur le module `cpu/` vendoré.
+- Unit tests per peripheral: `LEDS` decoding (the 4 row/column selection
+  cases), `BUTTONS` (falling edge + clear-on-any-write), `RANDOM`
+  (determinism: two fresh instances give the same sequence).
+- Regression test based on `gol.s`'s `seed0` (mentioned in `CLAUDE.md`):
+  load compiled `gol.s`, run one generation, check via the LED framebuffer
+  that the 3 still-life shapes (2 2×2 blocks + 1 beehive) are identical
+  before/after. Feasible headless (the framebuffer is a plain data
+  structure, testable without launching `eframe`).
+- Test for the `sub`/`add` fix in the vendored `cpu/` module.
 
-## Rejeté / hors scope
+## Rejected / out of scope
 
-- **Protocole DAP + réutilisation de l'extension `cs200`** : techniquement
-  viable (vérifié : `Vtb` lie `libcppdap`, l'extension est un client DAP
-  générique qui écoute un événement custom `boardUpdate` et envoie une
-  requête custom `updateInput`), mais explicitement écarté par l'auteur au
-  profit d'une UI propre en Rust.
-- **Reproduction bit-exacte de `Vtb` pour `RANDOM`** : impossible sans le
-  code source RTL du générateur matériel.
-- **Cœur RV32I écrit à la main** : écarté, `lib-rv32` (vendoré + patché)
-  suffit largement.
-- **Debugging (breakpoints, step)** : hors scope, contraire au but recherché
-  (vitesse, comportement "vraie carte qu'on allume").
+- **DAP protocol + reusing the `cs200` extension**: technically viable
+  (verified: `Vtb` links `libcppdap`, the extension is a generic DAP client
+  that listens for a custom `boardUpdate` event and sends a custom
+  `updateInput` request), but explicitly ruled out by the author in favor
+  of a clean Rust UI.
+- **Bit-exact reproduction of `Vtb` for `RANDOM`**: impossible without the
+  hardware generator's RTL source.
+- **Hand-written RV32I core**: ruled out, `lib-rv32` (vendored + patched)
+  is more than enough.
+- **Debugging (breakpoints, step)**: out of scope, contrary to the intended
+  goal (speed, "real board being powered on" behavior).

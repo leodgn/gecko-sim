@@ -34,6 +34,17 @@ impl RegisterFile {
     }
 }
 
+impl crate::cpu::traits::RegisterFile for RegisterFile {
+    fn read(&self, num: u8) -> Result<u32, crate::cpu::RiscvError> {
+        Ok(RegisterFile::read(self, num))
+    }
+
+    fn write(&mut self, num: u8, data: u32) -> Result<(), crate::cpu::RiscvError> {
+        RegisterFile::write(self, num, data);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
