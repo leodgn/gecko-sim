@@ -11,7 +11,7 @@ Référence matérielle : `ressources/hardware-spec.md`.
 ## 0. Setup
 
 - [x] `cargo init` (crate binaire, pas de workspace).
-- [ ] Ajouter `eframe`/`egui` comme dépendance (juste pour vérifier que ça
+- [x] Ajouter `eframe`/`egui` comme dépendance (juste pour vérifier que ça
       compile et affiche une fenêtre vide — pas de logique encore).
       `cargo add eframe` : fait. Reste à lancer
       `cargo run --example eframe_check` (fichier jetable déjà écrit,
@@ -25,12 +25,11 @@ Référence matérielle : `ressources/hardware-spec.md`.
 
 ## 1. Register file
 
-- [ ] Écrire un type qui implémente le trait `RegisterFile` de `lib-rv32`
-      (`read(num: u8) -> Result<u32, RiscvError>`, `write(num, data)`).
-      Stockage : un tableau de 32 `u32`. `x0` doit toujours lire 0, même
-      après une écriture dessus (le hardware RISC-V l'exige).
-- [ ] Test unitaire : écrire dans `x0`, vérifier qu'une lecture renvoie 0.
-      Écrire dans un autre registre, vérifier qu'on relit la bonne valeur.
+- [x] `src/regfile.rs` : struct `RegisterFile` (API maison pour l'instant,
+      pas encore le trait de `lib-rv32` — ça vient à l'étape 2), stockage
+      `[u32; 32]`, `x0` toujours à 0 (garanti en ignorant les écritures sur
+      `x0` dans `write`, plutôt que de spécialiser `read`).
+- [x] 4 tests passent (`cargo test`).
 
 *Concepts Rust : `trait` + `impl` pour un type, tableaux fixes `[T; N]`,
 `Result`.*

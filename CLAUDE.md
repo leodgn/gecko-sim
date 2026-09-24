@@ -1,124 +1,121 @@
 # gecko-sim
 
-Émulateur rapide, en Rust, pour le SoC pédagogique **Gecko5** du cours cs200
-(EPFL). But : remplacer le simulateur officiel `Vtb` (RTL cycle-précis,
-extrêmement lent — plusieurs secondes par étape de calcul sur un programme
-de taille modeste) par quelque chose d'assez rapide pour itérer sans
-attendre, pour un projet perso de jeu de la vie écrit en assembleur RISC-V
-dans le cadre du cours.
+Fast Rust emulator for the **Gecko5** educational SoC from EPFL's cs200
+course. Goal: replace the official `Vtb` simulator (cycle-accurate RTL,
+extremely slow — several seconds per computation step on a modest program)
+with something fast enough to iterate without waiting, for a personal
+game-of-life project written in RISC-V assembly for the course.
 
-C'est aussi un **projet d'apprentissage de Rust** pour l'auteur. Privilégier
-la clarté et l'idiomatique Rust à la performance à tout prix — le volume de
-calcul réel est faible (quelques dizaines de milliers d'instructions RISC-V
-par étape de jeu), la vitesse de Rust est de toute façon très confortable
-pour ce cas d'usage.
+It's also a **Rust learning project** for the author. Favor clarity and
+idiomatic Rust over performance at all costs — the actual compute volume is
+low (a few tens of thousands of RISC-V instructions per game step), Rust's
+speed is comfortably enough for this use case regardless.
 
-## Décision de scope (déjà prise, ne pas remettre en question sans redemander)
+## Scope decision (already made, don't revisit without asking again)
 
-**Ne pas réécrire le cœur RV32I à la main.** Réutiliser une bibliothèque Rust
-existante pour le décodage/exécution des instructions, et construire
-soi-même (c'est le vrai contenu du projet) :
-- le chargement du binaire compilé (`.bin`, voir `ressources/mmio.ld` pour
-  l'adresse de base) ;
-- le bus mémoire avec les périphériques Gecko5 personnalisés ;
-- les périphériques eux-mêmes (`LEDS`, `SEVEN_SEGS`, `BUTTONS`, `RANDOM`) ;
-- une interface graphique native (voir décision UI ci-dessous), fidèle au
-  comportement de l'extension VS Code `cs200`, sans les fonctionnalités de
-  debugging (pas de breakpoints/step — juste "on allume, ça tourne").
+**Don't rewrite the RV32I core by hand.** Reuse an existing Rust library for
+instruction decode/execution, and build ourselves (that's the actual
+substance of the project):
+- loading the compiled binary (`.bin`, see `ressources/mmio.ld` for the base
+  address);
+- the memory bus with custom Gecko5 peripherals;
+- the peripherals themselves (`LEDS`, `SEVEN_SEGS`, `BUTTONS`, `RANDOM`);
+- a native GUI (see UI decision below), faithful to the `cs200` VS Code
+  extension's behavior, without debugging features (no breakpoints/step —
+  just "power on, it runs").
 
-Design complet et verrouillé :
-`docs/superpowers/specs/2026-09-24-gecko-sim-design.md`. Feuille de route
-d'implémentation (pédagogique, pas de code) : `TODO.md`.
+Full, locked-in design: `docs/superpowers/specs/2026-09-24-gecko-sim-design.md`.
+Implementation roadmap (pedagogical, no code): `TODO.md`.
 
-## Décision UI (déjà prise, ne pas remettre en question sans redemander)
+## UI decision (already made, don't revisit without asking again)
 
-**UI graphique native en Rust avec `egui`/`eframe`.** Écartée volontairement :
-une intégration par protocole **Debug Adapter Protocol (DAP)** qui aurait
-permis de brancher l'extension VS Code `cs200` existante directement sur
-notre émulateur (vérifié : `Vtb`, le simulateur officiel, lie `libcppdap` et
-implémente un serveur DAP ; l'extension est un client DAP générique qui
-relaie un événement custom `boardUpdate` et une requête custom `updateInput`
-à une webview Svelte). Techniquement viable, mais l'auteur préfère construire
-sa propre UI plutôt que dépendre de ce protocole/de VS Code.
+**Native Rust GUI with `egui`/`eframe`.** Deliberately ruled out: a
+**Debug Adapter Protocol (DAP)** integration that would have let the existing
+`cs200` VS Code extension attach directly to our emulator (verified: `Vtb`,
+the official simulator, links `libcppdap` and implements a DAP server; the
+extension is a generic DAP client that relays a custom `boardUpdate` event
+and a custom `updateInput` request to a Svelte webview). Technically viable,
+but the author prefers building their own UI rather than depending on that
+protocol/on VS Code.
 
-**Comportement voulu** : fidèle à l'extension `cs200` (grille de LEDs
-12×10×3 couleurs, 4 afficheurs 7-segments, pavé directionnel + 5 boutons,
-dip switches pour la fidélité visuelle mais non câblés à une adresse MMIO),
-boutons pilotés à la souris (pas au clavier — c'est ce que fait l'extension
-de référence). Pas de debugging, le programme démarre immédiatement au
-lancement (`PC = 0x80000000`) et tourne en continu, comme une vraie carte
-qu'on allume.
+**Intended behavior**: faithful to the `cs200` extension (12×10×3-color LED
+grid, 4 seven-segment displays, directional pad + 5 buttons, dip switches
+for visual fidelity but not wired to any MMIO address), buttons driven by
+mouse (not keyboard — that's what the reference extension does). No
+debugging: the program starts running immediately on launch
+(`PC = 0x80000000`) and runs continuously, like a real board being powered
+on.
 
-## Mode de travail (déjà pris, ne pas remettre en question sans redemander)
+## Working mode (already decided, don't revisit without asking again)
 
-**L'auteur écrit tout le code lui-même**, dans un but d'apprentissage Rust.
-Le rôle de l'assistant est de guider (expliquer le *comment*, review, aider
-à débloquer), pas d'écrire l'implémentation à la place de l'auteur — sauf
-demande explicite ponctuelle.
+**The author writes all the code themselves**, as a Rust learning exercise.
+The assistant's role is to guide (explain the *how*, review, help unblock),
+not to write the implementation on the author's behalf — except for one-off
+explicit requests.
 
-Concrètement, étape par étape (suivre l'ordre de `TODO.md`) :
-1. L'assistant écrit les **tests** de l'étape en cours (et seulement les
-   tests — pas l'implémentation).
-2. L'auteur écrit le code qui fait passer ces tests.
-3. L'assistant review, explique les concepts Rust utiles si besoin, puis
-   passe à l'étape suivante une fois les tests verts.
+Concretely, step by step (follow the order in `TODO.md`):
+1. The assistant writes the **tests** for the current step (and only the
+   tests — not the implementation).
+2. The author writes the code that makes those tests pass.
+3. The assistant reviews, explains relevant Rust concepts as needed, then
+   moves to the next step once tests are green.
 
-### Cœur RV32I : piste retenue
+**Language**: everything that goes into the project — code, comments, doc
+comments, test names, assertion messages, commit messages — is in English.
+No French in project artifacts. The assistant still talks to the author in
+French in conversation; only what's written to files follows this rule.
 
-**[`lib-rv32`](https://github.com/trmckay/lib-rv32)** (MIT, `trmckay`). Exécute
-les instructions contre n'importe quelle mémoire/banc de registres qui
-implémente les traits `lib_rv32_common::traits::{Memory, RegisterFile}` —
-c'est exactement le point d'accroche nécessaire pour brancher les
-périphériques personnalisés dans `Memory::load`/`Memory::store`.
+### RV32I core: chosen path
 
-**Pas encore vérifié** (à faire en tout début de projet, avant de s'engager) :
-- la signature exacte de `Memory`/`RegisterFile` (le README ne les montre
-  pas en clair, il faut lire le code source) ;
-- si la crate gère un sous-ensemble RV32I pur proprement (elle annonce
-  `rv32imac` — I+M+A+C ; comme le programme cible n'utilise que la base I,
-  ça devrait passer, mais à confirmer en testant) ;
-- l'activité récente du dépôt (pas de date de dernier commit trouvée lors
-  de la recherche initiale).
+**[`lib-rv32`](https://github.com/trmckay/lib-rv32)** (MIT, `trmckay`). Executes
+instructions against any memory/register file that implements the
+`lib_rv32_common::traits::{Memory, RegisterFile}` traits — exactly the hook
+needed to plug custom peripherals into `Memory::load`/`Memory::store`.
 
-Alternative explorée mais moins bien adaptée : **`riscv-rust`**
-(`takahirox`, MIT) — plus complet (démarre Linux/xv6), mais construit autour
-de périphériques standards (UART, PLIC...), moins direct à détourner pour
-des adresses MMIO propres au Gecko5.
+**Verified via a spike** (see the design doc for the full write-up):
+- The `Memory`/`RegisterFile` trait signatures match what was expected.
+- The crate only implements pure RV32I in practice (no M/A/C), despite the
+  README advertising `rv32imac`.
+- **Confirmed bug**, found by actually running the code (not just reading
+  it): in `exec.rs`, the branch distinguishing `add` from `sub` checks the
+  wrong field (`func3` instead of `func7`), so `sub` always behaves like
+  `add`. `gol.s` uses `sub` — this is a real correctness risk, not
+  hypothetical.
+- The repo has been dormant since August 2021 (single maintainer), but is
+  small (~720 lines for `isa-sim`) and MIT-licensed.
 
-Si `lib-rv32` s'avère inutilisable (API trop rigide, abandonné, ne gère pas
-proprement RV32I seul), redemander avant de basculer sur un cœur écrit à la
-main — ce serait un changement de scope majeur (voir la conversation
-d'origine : concrètement +1 à 3 semaines de travail en plus).
+**Decision**: vendor `lib-rv32-isa`'s source into the project (`src/cpu/`)
+and patch the bug there, with the fix documented in a comment. No dependency
+on a dormant repo, fully readable/auditable code, an assumed and documented
+patch (nothing hidden).
 
-## Dossier `ressources/`
+## `ressources/` folder
 
-- `GameOfLife.pdf` — énoncé complet du labo (25 pages). Source faisant foi
-  en cas de doute sur le comportement attendu.
-- `hardware-spec.md` — résumé condensé et vérifié du plan mémoire et des
-  périphériques (`LEDS`, `SEVEN_SEGS`, `BUTTONS`, `RANDOM`). **Commencer par
-  ce fichier**, ne relire le PDF que si un détail y manque ou semble
-  incohérent.
-- `mmio.ld` — linker script du template du cours (adresse de chargement du
-  binaire : `0x80000000`).
-- `gol.s` — l'implémentation assembleur du jeu de la vie de l'auteur
-  (fonctionnelle, testée, mais pas garantie sans bug). Utile comme :
-  - binaire de test réel une fois assemblé (`riscv64-unknown-elf-gcc
-    -march=rv32i -mabi=ilp32 ...`, voir le Makefile du labo, non copié ici) ;
-  - exemple concret de séquences d'écriture dans les registres matériels
-    (`LEDS`, `BUTTONS`, etc.), utile pour vérifier que l'émulateur les
-    interprète comme attendu ;
-  - source de motifs de test connus : `seed0` (au fond du fichier) contient
-    trois formes stables classiques (deux blocs 2×2, une ruche) qui doivent
-    rester **parfaitement immobiles** d'une génération à l'autre — bon test
-    de non-régression pour la logique du jeu si jamais l'émulateur sert
-    aussi à valider `gol.s` lui-même, pas seulement à l'exécuter vite.
+- `GameOfLife.pdf` — full lab handout (25 pages). Source of truth in case of
+  doubt about expected behavior.
+- `hardware-spec.md` — condensed, verified summary of the memory map and
+  peripherals (`LEDS`, `SEVEN_SEGS`, `BUTTONS`, `RANDOM`). **Start with this
+  file**, only re-read the PDF if a detail is missing or seems inconsistent.
+- `mmio.ld` — the course template's linker script (binary load address:
+  `0x80000000`).
+- `gol.s` — the author's game-of-life assembly implementation (functional,
+  tested, but not guaranteed bug-free). Useful as:
+  - a real test binary once assembled (`riscv64-unknown-elf-gcc
+    -march=rv32i -mabi=ilp32 ...`, see the lab's Makefile, not copied here);
+  - a concrete example of write sequences into the hardware registers
+    (`LEDS`, `BUTTONS`, etc.), useful to verify the emulator interprets them
+    as expected;
+  - a source of known test patterns: `seed0` (at the bottom of the file)
+    contains three classic still-life shapes (two 2×2 blocks, a beehive)
+    that must stay **perfectly still** from one generation to the next — a
+    good regression test for the game logic if the emulator is ever also
+    used to validate `gol.s` itself, not just to run it fast.
 
-## Historique utile
+## Useful history
 
-Ce projet est né d'une frustration très concrete : `update_gsa` (la
-génération suivante du jeu de la vie) prenait 21 secondes par étape dans
-`Vtb`, réduit à 2,43 secondes après optimisation de l'assembleur — jugé
-encore trop lent pour itérer confortablement. Pas de detail supplémentaire
-nécessaire ici ; si une question porte sur *pourquoi* telle ou telle
-contrainte matérielle existe, `hardware-spec.md` et le PDF sont les sources
-à consulter, pas cet historique.
+This project started from a very concrete frustration: `update_gsa` (the
+game-of-life's next-generation step) took 21 seconds per step in `Vtb`,
+reduced to 2.43 seconds after assembly optimization — still judged too slow
+to iterate comfortably. No further detail needed here; for questions about
+*why* a given hardware constraint exists, `hardware-spec.md` and the PDF are
+the sources to consult, not this history.
