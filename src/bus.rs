@@ -82,6 +82,19 @@ impl Bus {
         }
         Ok(())
     }
+
+    /// Writes the given bytes into memory, one after another, starting at
+    /// `addr`. The byte at `bytes[0]` goes to `addr`, `bytes[1]` to `addr + 1`,
+    /// and so on.
+    ///
+    /// Used to load a whole program image (a `.bin` file's contents) into RAM
+    /// in one call, instead of writing it word by word.
+    pub fn store_byte(&mut self, addr: u32, bytes: &[u8]) -> Result<(), crate::cpu::RiscvError> {
+        for (i, byte) in bytes.iter().enumerate() {
+            self.write_byte(addr + i as u32, *byte as u32)?;
+        }
+        Ok(())
+    }
 }
 
 impl Memory for Bus {
