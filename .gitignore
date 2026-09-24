@@ -1,0 +1,8 @@
+/target
+
+# clone temporaire de lib-rv32, sert juste à copier des fichiers dans src/cpu/
+# à l'étape 2 du TODO — pas du code du projet, à supprimer une fois vendoré.
+/lib-rv32
+
+/ressources
+/examples

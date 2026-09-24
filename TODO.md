@@ -10,13 +10,16 @@ Référence matérielle : `ressources/hardware-spec.md`.
 
 ## 0. Setup
 
-- [ ] `cargo init` (crate binaire, pas de workspace).
+- [x] `cargo init` (crate binaire, pas de workspace).
 - [ ] Ajouter `eframe`/`egui` comme dépendance (juste pour vérifier que ça
       compile et affiche une fenêtre vide — pas de logique encore).
-- [ ] Récupérer les sources de `lib-rv32-isa` (le dépôt est cloné dans mon
-      scratchpad de session si tu veux les récupérer rapidement, sinon
-      reclone `https://github.com/trmckay/lib-rv32`) pour préparer le
-      vendoring de l'étape 2.
+      `cargo add eframe` : fait. Reste à lancer
+      `cargo run --example eframe_check` (fichier jetable déjà écrit,
+      `examples/eframe_check.rs`) et vérifier que la fenêtre s'ouvre. Une
+      fois confirmé, supprimer `examples/eframe_check.rs`.
+- [x] Récupérer les sources de `lib-rv32-isa` pour préparer le vendoring de
+      l'étape 2 — cloné directement dans `lib-rv32/` à la racine du projet
+      (ajouté à `.gitignore`, ce n'est qu'un dossier de travail temporaire).
 
 *Concepts Rust : structure d'un crate binaire, `Cargo.toml`, `cargo run`.*
 

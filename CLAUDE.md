@@ -56,6 +56,13 @@ Le rôle de l'assistant est de guider (expliquer le *comment*, review, aider
 à débloquer), pas d'écrire l'implémentation à la place de l'auteur — sauf
 demande explicite ponctuelle.
 
+Concrètement, étape par étape (suivre l'ordre de `TODO.md`) :
+1. L'assistant écrit les **tests** de l'étape en cours (et seulement les
+   tests — pas l'implémentation).
+2. L'auteur écrit le code qui fait passer ces tests.
+3. L'assistant review, explique les concepts Rust utiles si besoin, puis
+   passe à l'étape suivante une fois les tests verts.
+
 ### Cœur RV32I : piste retenue
 
 **[`lib-rv32`](https://github.com/trmckay/lib-rv32)** (MIT, `trmckay`). Exécute
