@@ -1,31 +1,34 @@
-//! RISC-V register file (32 registers, x0..x31).
-//!
-//! Write the implementation below the tests to make them pass. No need for
-//! lib-rv32's `RegisterFile` trait yet (that comes in step 2 of the TODO,
-//! once `cpu/` is vendored) — a plain home-grown API is enough for now.
-//!
-//! What to build (see the tests below for the exact expected signature):
-//! - a `RegisterFile` type with a `new()` constructor that starts with all
-//!   registers at 0;
-//! - a `read(&self, num: u8) -> u32` method;
-//! - a `write(&mut self, num: u8, data: u32)` method;
-//! - x0 must **always** read as 0, even after writing to it (RISC-V
-//!   constraint: x0 is hardwired to zero in real hardware).
+//! The RV32I integer register file.
+
+/// The 32 general-purpose registers `x0`..`x31`.
+///
+/// `x0` is hardwired to zero: writes to it are ignored.
 pub struct RegisterFile {
     registers: [u32; 32],
 }
 
 impl RegisterFile {
+    /// Creates a register file with every register set to 0.
     pub fn new() -> Self {
         Self {
             registers: [0u32; 32],
         }
     }
 
+    /// Returns the value of register `x{num}`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `num >= 32`.
     pub fn read(&self, num: u8) -> u32 {
         self.registers[num as usize]
     }
 
+    /// Sets register `x{num}` to `data`. Writes to `x0` are ignored.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `num >= 32`.
     pub fn write(&mut self, num: u8, data: u32) {
         if num == 0 {
         } else {
@@ -34,6 +37,8 @@ impl RegisterFile {
     }
 }
 
+/// Adapter for the CPU core. Never fails: register numbers come from 5-bit
+/// instruction fields, so they are always in range.
 impl crate::cpu::traits::RegisterFile for RegisterFile {
     fn read(&self, num: u8) -> Result<u32, crate::cpu::RiscvError> {
         Ok(RegisterFile::read(self, num))
@@ -82,7 +87,7 @@ mod tests {
         rf.write(2, 222);
         assert_eq!(rf.read(1), 111);
         assert_eq!(rf.read(2), 222);
-        // writing to x2 must not affect x1
+        // Writing to x2 must not affect x1.
         rf.write(2, 999);
         assert_eq!(rf.read(1), 111);
     }

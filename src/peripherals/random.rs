@@ -1,34 +1,23 @@
 //! `RANDOM` peripheral (`0x40000000`): each read returns the next value of
-//! a pseudo-random sequence. Per `GameOfLife.pdf` section 3.4.1, the real
-//! hardware/simulator is expected to return the **same sequence on every
-//! run** — not truly random, just a fixed, reproducible stream of numbers.
+//! a pseudo-random sequence.
 //!
-//! What to build: a `Random` type wrapping a simple PRNG (xorshift32 is a
-//! good fit: fast, a handful of lines, no external crate needed).
-//!
-//! - `pub fn new() -> Self` — seeded with a **fixed, hardcoded** constant
-//!   (not derived from system time or anything else that changes between
-//!   runs). xorshift32 requires a non-zero seed, or it would get stuck
-//!   returning 0 forever — pick any non-zero `u32` constant.
-//! - `pub fn next(&mut self) -> u32` — advances the internal state and
-//!   returns the new value. The classic xorshift32 step:
-//!   ```text
-//!   state ^= state << 13
-//!   state ^= state >> 17
-//!   state ^= state << 5
-//!   ```
-//!   applied in that order, each line updating `state` before the next one
-//!   reads it, then return the new `state`.
+//! As on the reference simulator (`GameOfLife.pdf`, section 3.4.1), the
+//! sequence is the same on every run: an xorshift32 generator with a fixed
+//! seed.
 
+/// An xorshift32 pseudo-random generator.
 pub struct Random {
     state: u32,
 }
 
 impl Random {
+    /// Creates a generator with the fixed seed. The seed must be non-zero,
+    /// or xorshift32 would only ever return 0.
     pub fn new() -> Self {
         Self { state: 0x2545F491 }
     }
 
+    /// Advances the generator and returns the new value.
     pub fn next(&mut self) -> u32 {
         self.state ^= self.state << 13;
         self.state ^= self.state >> 17;
@@ -58,8 +47,6 @@ mod tests {
         let second = rng.next();
         let third = rng.next();
 
-        // A sanity check against a broken implementation that just returns
-        // the seed unchanged every time.
         assert!(first != second || second != third);
     }
 }

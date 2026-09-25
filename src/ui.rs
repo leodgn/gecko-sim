@@ -1,36 +1,21 @@
-//! The `eframe`/`egui` UI: draws the LED grid, the 7-segment displays, and
-//! the button/joystick/dip-switch controls, faithfully to the `cs200`
-//! extension's board layout (see the design doc).
+//! The `eframe`/`egui` board UI, laid out like the `cs200` VS Code
+//! extension: 7-segment displays, the LED matrix, the two side buttons, dip
+//! switches, `b2`/`b1`/`b0` and the joystick. Buttons are clicked with the
+//! mouse.
 //!
-//! Deliberately does **not** touch `Bus` (or any lock protecting it)
-//! directly. Sharing the whole `Bus` (RAM included) behind one `Mutex`
-//! between the CPU thread (running flat-out) and this UI thread caused a
-//! real, reproducible steady-state lock-contention problem: both threads
-//! settled into a stable ~90%/~70% CPU regime fighting over the same lock,
-//! confirmed with a headless repro and with real automated clicks (via
-//! `ydotool`) on the running window, not just guessed at. Instead:
-//! - `BoardState` is a tiny, cheap-to-copy snapshot (LEDs + 7-seg) that the
-//!   CPU thread publishes periodically (see `main.rs`) — the lock guarding
-//!   it is only ever held for a few array copies, not for the CPU thread's
-//!   real work.
-//! - Button presses go through a lock-free `AtomicU32` bitmask instead of
-//!   a lock at all: `press` just OR's a bit in, the CPU thread drains and
-//!   clears it once per batch.
+//! The UI never touches the `Bus`. It draws the `BoardState` snapshot
+//! published by the CPU thread, and records presses in a shared bitmask
+//! that the CPU thread applies before its next batch.
 //!
-//! Named button-bit mapping (see `ressources/hardware-spec.md`):
-//! - directional pad (JoyStick in the reference extension): JC=0, JR=1,
-//!   JL=2, JB=3, JT=4.
-//! - button row: BUTTON_1=5, BUTTON_0=6, BUTTON_2=7, plus two bits (8, 9)
-//!   unnamed in the course template — arbitrarily assigned to the 4th/5th
-//!   button slot here, since `gol.s` never uses them anyway.
-//!
-//! Dip switches are drawn for visual fidelity only — not wired to the bus
-//! at all (see the design doc: no MMIO address exists for them), their
-//! state lives purely in this struct.
+//! The dip switches are visual only: the hardware exposes no register for
+//! them.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+// Bit of each button in the `BUTTONS` register (see
+// `ressources/hardware-spec.md`). Bits 8 and 9 are unnamed in the course
+// template; they are mapped to the two side buttons.
 const JC: u8 = 0;
 const JR: u8 = 1;
 const JL: u8 = 2;
@@ -42,17 +27,21 @@ const BUTTON_2: u8 = 7;
 const BUTTON_UNNAMED_A: u8 = 8;
 const BUTTON_UNNAMED_B: u8 = 9;
 
-/// A cheap-to-copy snapshot of everything the UI needs to draw. Published
-/// by the CPU thread periodically; never contains the RAM/registers the UI
-/// has no business touching.
+/// Snapshot of the board outputs the UI draws, published by the CPU thread
+/// after each batch.
 pub struct BoardState {
+    /// Red LED grid, indexed `[row][col]`.
     pub leds_red: [[bool; 12]; 10],
+    /// Green LED grid, indexed `[row][col]`.
     pub leds_green: [[bool; 12]; 10],
+    /// Blue LED grid, indexed `[row][col]`.
     pub leds_blue: [[bool; 12]; 10],
+    /// Raw `SEVEN_SEGS` register value.
     pub seven_segs: u32,
 }
 
 impl BoardState {
+    /// Creates a state with every LED and segment off.
     pub fn new() -> Self {
         Self {
             leds_red: [[false; 12]; 10],
@@ -63,6 +52,7 @@ impl BoardState {
     }
 }
 
+/// The `eframe` application.
 pub struct GeckoApp {
     board_state: Arc<Mutex<BoardState>>,
     pending_presses: Arc<AtomicU32>,
@@ -70,6 +60,9 @@ pub struct GeckoApp {
 }
 
 impl GeckoApp {
+    /// Creates the app. `board_state` is read on every frame;
+    /// `pending_presses` gets one bit set per clicked button (bit numbers
+    /// as in the `BUTTONS` register).
     pub fn new(board_state: Arc<Mutex<BoardState>>, pending_presses: Arc<AtomicU32>) -> Self {
         Self {
             board_state,
@@ -78,6 +71,8 @@ impl GeckoApp {
         }
     }
 
+    /// Draws the 12x10 LED matrix. Each LED's color mixes its red, green
+    /// and blue states.
     fn draw_leds(&self, ui: &mut eframe::egui::Ui) {
         use eframe::egui::{Color32, Rect, Sense, Stroke, pos2, vec2};
 
@@ -117,11 +112,10 @@ impl GeckoApp {
         }
     }
 
-    /// Draws the 4 digits as real 7-segment displays, decoding each byte
-    /// against the segment order used by `font_data` in `gol.s`: bit 0 = a
-    /// (top), 1 = b (top-right), 2 = c (bottom-right), 3 = d (bottom),
-    /// 4 = e (bottom-left), 5 = f (top-left), 6 = g (middle). Confirmed
-    /// against the table there (e.g. `0x3F` = a,b,c,d,e,f lit, g off = "0").
+    /// Draws the four 7-segment digits, leftmost = byte 3. In each byte,
+    /// bit 0 = a (top), 1 = b (top-right), 2 = c (bottom-right),
+    /// 3 = d (bottom), 4 = e (bottom-left), 5 = f (top-left),
+    /// 6 = g (middle). Bit 7 is ignored.
     fn draw_seven_segs(&self, ui: &mut eframe::egui::Ui) {
         use eframe::egui::{Color32, Sense, Stroke, pos2, vec2};
 
@@ -167,12 +161,12 @@ impl GeckoApp {
         }
     }
 
-    /// Lock-free: just OR's the bit in. The CPU thread drains and clears
-    /// this bitmask once per batch (see `main.rs`).
+    /// Records a press of the button mapped to `bit`.
     fn press(&self, bit: u8) {
         self.pending_presses.fetch_or(1 << bit, Ordering::AcqRel);
     }
 
+    /// Draws the joystick: up, left/center/right, down.
     fn draw_joystick(&self, ui: &mut eframe::egui::Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -201,8 +195,8 @@ impl GeckoApp {
         });
     }
 
-    /// The 2 unnamed buttons (bits 8, 9), stacked vertically to the right
-    /// of the LED grid — see `GameOfLife.pdf`, Figure 7 (page 8).
+    /// Draws the two unnamed buttons (bits 8 and 9), stacked to the right of
+    /// the LED matrix as in `GameOfLife.pdf`, Figure 7.
     fn draw_side_buttons(&self, ui: &mut eframe::egui::Ui) {
         ui.vertical(|ui| {
             if ui.button("B3").clicked() {
@@ -214,9 +208,8 @@ impl GeckoApp {
         });
     }
 
-    /// `b2`, `b1`, `b0` in that exact left-to-right order — matches Figure
-    /// 7 in `GameOfLife.pdf` (page 8), which shows them in that order next
-    /// to the dip switches, not in bit order.
+    /// Draws `b2`, `b1`, `b0`, left to right as in `GameOfLife.pdf`,
+    /// Figure 7 (not in bit order).
     fn draw_bottom_buttons(&self, ui: &mut eframe::egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("b2").clicked() {
@@ -231,6 +224,7 @@ impl GeckoApp {
         });
     }
 
+    /// Draws the 8 dip switches.
     fn draw_dip_switches(&mut self, ui: &mut eframe::egui::Ui) {
         ui.horizontal(|ui| {
             for switch in &mut self.dip_switches {
@@ -242,15 +236,11 @@ impl GeckoApp {
 
 impl eframe::App for GeckoApp {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
-        // The CPU thread mutates shared state independently of user input,
-        // so we need to keep redrawing periodically rather than only on
-        // input events (egui's default). Capped to ~60 fps rather than
-        // "as fast as possible".
+        // The board changes without user input, so keep repainting (~60 fps).
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(16));
 
-        // Left/right margins so the board (narrower than the window) sits
-        // centered instead of hugging the left edge.
+        // Horizontal margins to center the board in the window.
         ui.horizontal(|ui| {
             ui.add_space(20.0);
             ui.vertical(|ui| {

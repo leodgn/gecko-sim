@@ -164,18 +164,18 @@ actors here, just classic locked shared state.*
 
 ## 7. UI (`egui`/`eframe`)
 
-- [ ] Skeleton `eframe` app that loops and reads the shared state each
+- [x] Skeleton `eframe` app that loops and reads the shared state each
       frame (no need for special VSync handling, `egui` takes care of it).
-- [ ] Draw the 12×10 color LED grid (colored rectangles, see
+- [x] Draw the 12×10 color LED grid (colored rectangles, see
       `LedArray.svelte` from the `cs200` extension for the exact visual
       reference if you want to match the look).
-- [ ] Draw the 4 seven-segment displays (`font_data` table in `gol.s` to
+- [x] Draw the 4 seven-segment displays (`font_data` table in `gol.s` to
       interpret the segment patterns).
-- [ ] Draw the directional pad (5 buttons) + the second row of 5 buttons +
+- [x] Draw the directional pad (5 buttons) + the second row of 5 buttons +
       the dip switches (visual widget only, not wired). Buttons clickable
       with the mouse (mousedown → bit to 1, mouseup/leave → nothing special
       on the emulator side, the bit stays until a CPU clear).
-- [ ] "Load a .bin" control (file picker or CLI argument, your choice) that
+- [x] "Load a .bin" control (file picker or CLI argument, your choice) that
       (re)starts emulation.
 
 *Rust concepts: `egui::Context`, immediate mode (drawing code runs every
@@ -184,15 +184,15 @@ what you may have seen elsewhere).*
 
 ## 8. Regression test with `gol.s`
 
-- [ ] Load `gol.s` compiled with `seed0`, run one generation (headless, no
+- [x] Load `gol.s` compiled with `seed0`, run one generation (headless, no
       `eframe` — just the CPU loop + the framebuffer), check via the LED
       framebuffer that the 3 still-life shapes (2 2×2 blocks + 1 beehive)
       are identical before/after.
 
 ## 9. Polish (optional, once everything works)
 
-- [ ] Clean error display in the UI if the CPU crashes (invalid opcode,
+- [x] Clean error display in the UI if the CPU crashes (invalid opcode,
       out-of-map memory access) instead of a process crash.
-- [ ] Display speed: if 60 Hz rendering struggles to keep up with a CPU
+- [x] Display speed: if 60 Hz rendering struggles to keep up with a CPU
       running at full speed, consider a throttle or simply showing the
       "latest visible state" without blocking the CPU thread.

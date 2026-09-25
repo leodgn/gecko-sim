@@ -1,30 +1,26 @@
-//! `SEVEN_SEGS` peripheral (`0x60000000`): 4 digits, one byte each, packed
-//! into a single 32-bit word (`[7:0]` = digit 0 / rightmost, ... `[31:24]`
-//! = digit 3 / leftmost — see `ressources/hardware-spec.md`). Each byte is
-//! a segment pattern, not a decimal digit (see `font_data` in `gol.s`).
+//! `SEVEN_SEGS` peripheral (`0x60000000`): four digits packed into one
+//! word, one byte each (`[7:0]` = digit 0, rightmost, up to `[31:24]` =
+//! digit 3, leftmost). Each byte is a raw segment pattern, not a number.
 //!
-//! The PDF doesn't document read behavior for this register (unlike
-//! `LEDS`, which is explicitly write-only) — so it's plain, ordinary
-//! read/write storage, no special decoding needed at this layer. The
-//! segment-pattern interpretation only matters once the UI draws the
-//! digits (step 7).
-//!
-//! What to build: the simplest of the 4 peripherals — a single `u32`
-//! wrapped in a struct, with a getter and a setter.
+//! The register is plain read/write storage.
 
+/// The `SEVEN_SEGS` register.
 pub struct SevenSegs {
     value: u32,
 }
 
 impl SevenSegs {
+    /// Creates the register with every segment off.
     pub fn new() -> Self {
         Self { value: 0 }
     }
 
+    /// Returns the current register value.
     pub fn read(&self) -> u32 {
         self.value
     }
 
+    /// Replaces the register value.
     pub fn write(&mut self, value: u32) {
         self.value = value
     }

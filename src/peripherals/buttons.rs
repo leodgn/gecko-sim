@@ -1,42 +1,33 @@
-//! `BUTTONS` peripheral (`0x70000004`): 10 physical buttons, one bit each
-//! (bits 0-9), rest reserved. See `ressources/hardware-spec.md` for the
-//! named bits (JC/JR/JL/JB/JT, BUTTON_0/1/2) — not needed at this layer,
-//! that mapping only matters once the UI exists (step 7).
+//! `BUTTONS` peripheral (`0x70000004`): one sticky bit per physical button
+//! (bits 0-9, the rest reserved).
 //!
-//! Hardware semantics (from the spec):
-//! - A bit goes to 1 on a "falling edge" (button released → pressed). It
-//!   **stays** 1 until the program clears it — pressing again while it's
-//!   already 1 changes nothing.
-//! - **Any** write from the CPU clears the **entire** register at once
-//!   (you can't clear a single bit — the hardware doesn't support that).
-//! - Reads just return the current register value, no side effect.
-//!
-//! What to build:
-//! - `pub struct Buttons { register: u32 }`
-//! - `pub fn new() -> Self` — register starts at 0.
-//! - `pub fn press(&mut self, bit: u8)` — simulates a UI click: sets that
-//!   bit to 1 (leaves every other bit untouched).
-//! - `pub fn read(&self) -> u32` — the current register value.
-//! - `pub fn clear(&mut self)` — simulates a CPU write: resets the whole
-//!   register to 0, regardless of what was pressed.
+//! - A press sets the button's bit to 1. It stays 1 until the program
+//!   clears it; pressing again in the meantime has no effect.
+//! - Any CPU write clears the whole register, whatever the written value.
+//! - Reads have no side effect.
 
+/// The `BUTTONS` register.
 pub struct Buttons {
     register: u32,
 }
 
 impl Buttons {
+    /// Creates the register with no button pressed.
     pub fn new() -> Self {
         Self { register: 0 }
     }
 
+    /// Sets the bit of the button that was pressed. Other bits are unchanged.
     pub fn press(&mut self, bit: u8) {
         self.register |= 1 << bit;
     }
 
+    /// Returns the current register value.
     pub fn read(&self) -> u32 {
         self.register
     }
 
+    /// Clears every bit, as a CPU write does.
     pub fn clear(&mut self) {
         self.register = 0
     }

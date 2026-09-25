@@ -1,35 +1,29 @@
-//! Memory bus: implements `cpu::traits::Memory` over flat RAM.
+//! The Gecko5 memory bus: routes CPU loads and stores to RAM or to the
+//! memory-mapped peripherals.
 //!
-//! No peripherals yet (that's step 5) — just two separate flat RAM regions,
-//! matching the Gecko5 memory map (see `ressources/hardware-spec.md`):
-//! - `0x80000000` and up: code/data/stack.
-//! - `0x90001000..0x90001300`: game state (GSA, custom variables).
+//! Memory map (see `ressources/hardware-spec.md`):
 //!
-//! What to build:
-//! - `pub struct Bus { ... }` — two `Vec<u8>` (or similar), one per region,
-//!   sized generously (e.g. 1 MiB for the main region, 0x300 bytes for the
-//!   game-state region — that region's exact size is dictated by the
-//!   memory map: `0x90001000` to `0x90001300`).
-//! - `pub fn new() -> Self` — both regions zero-initialized.
-//! - `impl cpu::traits::Memory for Bus`, implementing `fetch`,
-//!   `read_word/half_word/byte`, `write_word/half_word/byte`.
+//! | Address                     | Target                               |
+//! |-----------------------------|--------------------------------------|
+//! | `0x40000000`                | `RANDOM` (read-only)                 |
+//! | `0x50000000`                | `LEDS` (write-only, reads return 0)  |
+//! | `0x60000000`                | `SEVEN_SEGS`                         |
+//! | `0x70000004`                | `BUTTONS` (any write clears it)      |
+//! | `0x80000000..+1 MiB`        | main RAM: code, data, stack          |
+//! | `0x90001000..0x90001300`    | game-state RAM                       |
 //!
-//! Key design point: for a given address, first figure out *which* region
-//! it falls into and what the offset *within that region* is (address minus
-//! that region's base address) — don't use the raw 32-bit address as a
-//! direct index into a `Vec`, it would need gigabytes. Addresses outside
-//! both regions are an error (`RiscvError::MemoryOutOfBoundsError`).
-//!
-//! Reminder: RISC-V is little-endian — the least significant byte is
-//! stored at the lowest address. `u32::to_le_bytes`/`from_le_bytes` and
-//! `u16::to_le_bytes`/`from_le_bytes` do the conversion for you.
+//! Peripherals are only reachable with word accesses. Any other address is
+//! a `RiscvError::MemoryOutOfBoundsError`.
 
 use crate::cpu::traits::Memory;
 use crate::peripherals::{buttons::Buttons, leds::Leds, random::Random, seven_segs::SevenSegs};
 use std::cell::RefCell;
 
+/// Base address of main RAM, where the program image is loaded and where
+/// execution starts.
 pub const MAIN_BASE: u32 = 0x80000000;
 const MAIN_SIZE: usize = 0x100000;
+/// Base address of the game-state RAM region.
 pub const GAME_STATE_BASE: u32 = 0x90001000;
 const GAME_STATE_SIZE: usize = 0x300;
 const RANDOM: u32 = 0x40000000;
@@ -37,9 +31,12 @@ const LEDS: u32 = 0x50000000;
 const SEVEN_SEGS: u32 = 0x60000000;
 const BUTTONS: u32 = 0x70000004;
 
+/// The memory bus: both RAM regions plus the four peripherals.
 pub struct Bus {
     main: Vec<u8>,
     game_state: Vec<u8>,
+    // `RefCell` because reading `RANDOM` advances the generator, while
+    // `Memory::read_word` only gets `&self`.
     random: RefCell<Random>,
     leds: Leds,
     seven_segs: SevenSegs,
@@ -47,6 +44,7 @@ pub struct Bus {
 }
 
 impl Bus {
+    /// Creates a bus with zeroed RAM and peripherals in their power-on state.
     pub fn new() -> Self {
         Self {
             main: vec![0; MAIN_SIZE],
@@ -58,8 +56,8 @@ impl Bus {
         }
     }
 
-    /// Returns true if `addr` is in the main region, false if it's in the game-state region,
-    /// alongside the byte offset within that region.
+    /// Maps `addr` to a RAM region and an offset within it. The boolean is
+    /// `true` for main RAM and `false` for game-state RAM.
     fn locate(&self, addr: u32) -> Result<(bool, usize), crate::cpu::RiscvError> {
         if addr >= MAIN_BASE && addr < (MAIN_BASE + MAIN_SIZE as u32) {
             return Ok((true, (addr - MAIN_BASE) as usize));
@@ -70,9 +68,8 @@ impl Bus {
         Err(crate::cpu::RiscvError::MemoryOutOfBoundsError(addr))
     }
 
-    /// Reads `num_bytes` consecutive little-endian bytes starting at `addr`
-    /// and combines them into a `u32`. Shared by `read_half_word` (2 bytes)
-    /// and `read_word` (4 bytes) — same logic, different bound.
+    /// Reads `num_bytes` consecutive bytes from RAM starting at `addr`, as
+    /// a little-endian value.
     fn read_bytes(&self, addr: u32, num_bytes: u32) -> Result<u32, crate::cpu::RiscvError> {
         let mut value: u32 = 0;
         for i in 0..num_bytes {
@@ -81,9 +78,8 @@ impl Bus {
         Ok(value)
     }
 
-    /// Writes the `num_bytes` low-order little-endian bytes of `data`
-    /// starting at `addr`. Shared by `write_half_word` (2 bytes) and
-    /// `write_word` (4 bytes).
+    /// Writes the `num_bytes` low-order bytes of `data` to RAM starting at
+    /// `addr`, in little-endian order.
     fn write_bytes(
         &mut self,
         addr: u32,
@@ -97,12 +93,13 @@ impl Bus {
         Ok(())
     }
 
-    /// Writes the given bytes into memory, one after another, starting at
-    /// `addr`. The byte at `bytes[0]` goes to `addr`, `bytes[1]` to `addr + 1`,
-    /// and so on.
+    /// Copies `bytes` into RAM starting at `addr`. Used to load a program
+    /// image.
     ///
-    /// Used to load a whole program image (a `.bin` file's contents) into RAM
-    /// in one call, instead of writing it word by word.
+    /// # Errors
+    ///
+    /// Returns `MemoryOutOfBoundsError` if any byte falls outside RAM. Bytes
+    /// before the failing one have already been written.
     pub fn store_byte(&mut self, addr: u32, bytes: &[u8]) -> Result<(), crate::cpu::RiscvError> {
         for (i, byte) in bytes.iter().enumerate() {
             self.write_byte(addr + i as u32, *byte as u32)?;
@@ -110,19 +107,24 @@ impl Bus {
         Ok(())
     }
 
+    /// Returns the LED matrix.
     pub fn leds(&self) -> &Leds {
         &self.leds
     }
 
+    /// Returns the raw `SEVEN_SEGS` register (one segment pattern per byte).
     pub fn seven_segs(&self) -> u32 {
         self.seven_segs.read()
     }
 
+    /// Registers a press of the button mapped to `bit` in `BUTTONS`.
     pub fn press_button(&mut self, bit: u8) {
         self.buttons.press(bit);
     }
 }
 
+/// Word accesses at a peripheral address are routed to that peripheral;
+/// everything else goes to RAM.
 impl Memory for Bus {
     fn fetch(&self, pc: u32) -> Result<u32, crate::cpu::RiscvError> {
         self.read_word(pc)
@@ -228,7 +230,6 @@ mod tests {
     #[test]
     fn address_outside_both_regions_is_an_error() {
         let bus = Bus::new();
-        // Nowhere near either region: not RAM, not (yet) a peripheral.
         assert!(bus.read_word(0x12345678).is_err());
     }
 
@@ -240,8 +241,7 @@ mod tests {
     #[test]
     fn leds_writes_update_state_but_reads_always_return_zero() {
         let mut bus = Bus::new();
-        // all rows, all cols, red selected, on: see peripherals::leds for
-        // the command format.
+        // All rows, all columns, red, on.
         let all_red_on: u32 = (1 << 16) | (1 << 8) | (0b1111 << 4) | 0b1111;
         bus.write_word(LEDS, all_red_on).unwrap();
 

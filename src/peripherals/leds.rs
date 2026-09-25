@@ -1,57 +1,30 @@
-//! `LEDS` peripheral (`0x50000000`): write-only, reads always return 0 (the
-//! CPU must never be able to read back LED state — see
-//! `ressources/hardware-spec.md`). The "always returns 0 on read" part is
-//! handled where `Bus` dispatches to this peripheral (later in step 5),
-//! not here — this module only owns the framebuffer and the write-command
-//! decoding.
+//! `LEDS` peripheral (`0x50000000`): a 10-row by 12-column matrix of RGB
+//! LEDs, driven by write commands. It is write-only: reads return 0 (handled
+//! by `Bus`).
 //!
-//! Framebuffer representation: one `[[bool; 12]; 10]` per color (r/g/b) —
-//! `color[row][col]`, plain and simple, one boolean per LED. This is
-//! **not** the format the write command itself uses (that one's
-//! bit-packed, see below, and that packing is unavoidable — it's the
-//! hardware's actual wire format). But there's no reason our own storage
-//! has to mirror that packing: a straightforward 2D array of booleans is
-//! much easier to reason about and to update. If some future UI code
-//! wants a bitmask instead (like the `cs200` extension's `LedArray_t`),
-//! that conversion belongs there, isolated, not baked into this struct.
-//!
-//! ## Write-command format (see `hardware-spec.md` for the full table)
+//! ## Write-command format
 //!
 //! ```text
 //! bit 31..16 : value
 //! bit 15..11 : unused
-//! bit 10     : b (blue selected)
-//! bit 9      : g (green selected)
-//! bit 8      : r (red selected)
-//! bit 7..4   : row  (0b1111 = all rows)
-//! bit 3..0   : col  (0b1111 = all columns)
+//! bit 10     : blue selected
+//! bit 9      : green selected
+//! bit 8      : red selected
+//! bit 7..4   : row (0b1111 = all rows)
+//! bit 3..0   : column (0b1111 = all columns)
 //! ```
 //!
-//! Semantics of `value`, depending on the row/col selection:
-//! - all rows + all cols → every LED of the selected color(s) takes
-//!   `value`'s bit 0 (i.e. bit 16 of the whole word).
-//! - all rows + one col → the 10 LEDs of that column take `value`'s bits
-//!   0..9 (bit 16 = top row/row 0, bit 25 = bottom row/row 9).
-//! - one row + all cols → the 12 LEDs of that row take `value`'s bits
-//!   0..11 (bit 16 = leftmost column, bit 27 = rightmost column).
-//! - one row + one col → that single LED takes `value`'s bit 0 (bit 16).
-//!
-//! What to build:
-//! - `pub struct Leds { r: [[bool; 12]; 10], g: [[bool; 12]; 10], b: [[bool; 12]; 10] }`
-//! - `pub fn new() -> Self` — everything off (`false`).
-//! - `pub fn write(&mut self, command: u32)` — decode the format above and
-//!   set the right `bool`s in `r`/`g`/`b`. A row or column value of
-//!   `0b1111` (`15`) means "all"; anything else is a specific index (rows
-//!   0-9, columns 0-11). Tip: handle the 4 cases as 4 separate branches
-//!   (all/all, all/one, one/all, one/one) rather than trying to unify them
-//!   into one clever formula — the spec itself describes them as 4
-//!   distinct cases.
-//! - `pub fn red(&self) -> [[bool; 12]; 10]`, `pub fn green(&self) -> [[bool; 12]; 10]`,
-//!   `pub fn blue(&self) -> [[bool; 12]; 10]` — plain getters (arrays of
-//!   `bool` are `Copy`, returning them by value is fine here).
+//! Only the selected colors are updated. How `value` is applied depends on
+//! the row/column selection:
+//! - all rows, all columns: every LED takes `value` bit 0.
+//! - all rows, one column: row `r` takes `value` bit `r` (0-9).
+//! - one row, all columns: column `c` takes `value` bit `c` (0-11).
+//! - one row, one column: that LED takes `value` bit 0.
 
+/// Row/column selector value meaning "all rows" or "all columns".
 const ALL: u32 = 0b1111;
 
+/// The LED matrix state, one on/off grid per color, indexed `[row][col]`.
 pub struct Leds {
     r: [[bool; 12]; 10],
     g: [[bool; 12]; 10],
@@ -59,6 +32,7 @@ pub struct Leds {
 }
 
 impl Leds {
+    /// Creates the matrix with every LED off.
     pub fn new() -> Self {
         Self {
             r: [[false; 12]; 10],
@@ -67,6 +41,12 @@ impl Leds {
         }
     }
 
+    /// Applies a write command (see the module docs for the format).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command selects a row in 10..=14 or a column in
+    /// 12..=14, which don't exist.
     pub fn write(&mut self, command: u32) {
         let value = command >> 16;
         let select_b = (command >> 10) & 1 == 1;
@@ -98,6 +78,7 @@ impl Leds {
         }
     }
 
+    /// Sets the LED at `row`, `col` to `on` in each selected color.
     fn set(&mut self, r: bool, g: bool, b: bool, row: usize, col: usize, on: bool) {
         if r {
             self.r[row][col] = on;
@@ -110,14 +91,17 @@ impl Leds {
         }
     }
 
+    /// Returns the red grid.
     pub fn red(&self) -> [[bool; 12]; 10] {
         self.r
     }
 
+    /// Returns the green grid.
     pub fn green(&self) -> [[bool; 12]; 10] {
         self.g
     }
 
+    /// Returns the blue grid.
     pub fn blue(&self) -> [[bool; 12]; 10] {
         self.b
     }
@@ -127,8 +111,7 @@ impl Leds {
 mod tests {
     use super::*;
 
-    /// Builds a write command from its fields, so the tests read closer to
-    /// the spec table than a pile of magic hex numbers would.
+    /// Builds a write command from its fields.
     fn command(row: u32, col: u32, r: bool, g: bool, b: bool, value: u32) -> u32 {
         (value << 16)
             | ((b as u32) << 10)
