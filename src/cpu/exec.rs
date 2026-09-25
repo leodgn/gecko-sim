@@ -145,13 +145,22 @@ where
                 Err(why) => return Err(why),
             };
             let func3 = decode_func3!(ir);
+            // Bug fix (upstream lib-rv32): `blt`/`bge` compared the raw
+            // `u32` register values, i.e. as *unsigned* — so -1 looked
+            // bigger than 1. That broke `bgtz` (= `blt x0, rs`) in `gol.s`'s
+            // `wait` loop: whenever the speed doesn't divide
+            // `MAX_WAIT_TIME` (e.g. speed 5), the counter jumps from a
+            // small positive value to a negative one, and the loop kept
+            // going for ~2^32 / speed iterations instead of exiting — the
+            // "freeze" in `docs/known-issues/freeze-after-speeding-up.md`.
+            // Also, `bgeu` used a strict `>` instead of `>=`.
             let taken = match func3 {
                 FUNC3_BEQ => rs1_data == rs2_data,
                 FUNC3_BNE => rs1_data != rs2_data,
-                FUNC3_BLT => rs1_data < rs2_data,
-                FUNC3_BGE => rs1_data >= rs2_data,
+                FUNC3_BLT => (rs1_data as i32) < (rs2_data as i32),
+                FUNC3_BGE => (rs1_data as i32) >= (rs2_data as i32),
                 FUNC3_BLTU => rs1_data < rs2_data,
-                FUNC3_BGEU => rs1_data > rs2_data,
+                FUNC3_BGEU => rs1_data >= rs2_data,
                 _ => return Err(RiscvError::InvalidFunc3Error(ir, func3)),
             };
             let imm = b_imm!(ir);

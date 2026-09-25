@@ -180,6 +180,72 @@ mod tests {
         assert_eq!(rf.read(5), 0);
     }
 
+    /// Runs a single branch instruction (branch offset: +8) with the given
+    /// operands in x1/x2 (or whatever registers the encoding names) and
+    /// returns whether it was taken.
+    fn branch_taken(instruction: u32, regs: &[(u8, u32)]) -> bool {
+        let mut mem = FakeMemory::with_program(&[instruction]);
+        let mut rf = RegisterFile::new();
+        for &(reg, value) in regs {
+            rf.write(reg, value);
+        }
+        let mut pc: u32 = 0;
+
+        super::exec_one(&mut pc, &mut mem, &mut rf).unwrap();
+
+        match pc {
+            8 => true,
+            4 => false,
+            other => panic!("unexpected pc after branch: {other}"),
+        }
+    }
+
+    // Hand-encoded B-type instructions, all with a +8 offset.
+    const BLT_X1_X2_8: u32 = 0x0020c463;
+    const BGE_X1_X2_8: u32 = 0x0020d463;
+    const BLTU_X1_X2_8: u32 = 0x0020e463;
+    const BGEU_X1_X2_8: u32 = 0x0020f463;
+    /// `bgtz x9, 8` is a pseudo-instruction for `blt x0, x9, 8`.
+    const BGTZ_X9_8: u32 = 0x00904463;
+
+    const MINUS_ONE: u32 = -1i32 as u32;
+
+    /// Regression test for the upstream lib-rv32 bug behind
+    /// `docs/known-issues/freeze-after-speeding-up.md`: `blt`/`bge` compared
+    /// their operands as unsigned, so -1 looked like 0xFFFFFFFF, i.e. huge.
+    #[test]
+    fn blt_and_bge_compare_as_signed() {
+        assert!(branch_taken(BLT_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "-1 < 1");
+        assert!(!branch_taken(BGE_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "!(-1 >= 1)");
+        assert!(!branch_taken(BLT_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]), "!(1 < -1)");
+        assert!(branch_taken(BGE_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]), "1 >= -1");
+    }
+
+    /// The exact instruction `wait` in `gol.s` loops on: `sub s1, s1, a3`
+    /// then `bgtz s1, 1b`. With a speed that doesn't divide `MAX_WAIT_TIME`
+    /// (e.g. 5), the counter goes from a small positive value straight to a
+    /// negative one, and the loop must exit there. With an unsigned
+    /// comparison, it instead kept going for ~2^32 / speed iterations: the
+    /// "freeze" (minutes of busy-looping with nothing on screen changing).
+    #[test]
+    fn bgtz_is_not_taken_for_a_negative_register() {
+        assert!(!branch_taken(BGTZ_X9_8, &[(9, -2i32 as u32)]));
+        assert!(!branch_taken(BGTZ_X9_8, &[(9, 0)]));
+        assert!(branch_taken(BGTZ_X9_8, &[(9, 3)]));
+    }
+
+    #[test]
+    fn bltu_and_bgeu_compare_as_unsigned() {
+        assert!(!branch_taken(BLTU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "!(0xFFFFFFFF <u 1)");
+        assert!(branch_taken(BGEU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "0xFFFFFFFF >=u 1");
+    }
+
+    /// Upstream lib-rv32 implemented `bgeu` as a strict `>`.
+    #[test]
+    fn bgeu_is_taken_when_operands_are_equal() {
+        assert!(branch_taken(BGEU_X1_X2_8, &[(1, 7), (2, 7)]));
+    }
+
     #[test]
     fn store_then_load_round_trips_through_memory() {
         // sw x2, 0(x1) ; lw x3, 0(x1)  -- store x2 at [x1], then load it into x3
