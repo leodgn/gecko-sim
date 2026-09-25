@@ -114,7 +114,11 @@ impl Bus {
         &self.leds
     }
 
-    pub fn press_button(&mut self, bit: u8){
+    pub fn seven_segs(&self) -> u32 {
+        self.seven_segs.read()
+    }
+
+    pub fn press_button(&mut self, bit: u8) {
         self.buttons.press(bit);
     }
 }

@@ -5,10 +5,12 @@ use std::env::args;
 use std::fs::read;
 use std::sync::{Arc, Mutex};
 use std::thread;
+
 mod bus;
 mod cpu;
 mod peripherals;
 mod regfile;
+mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = args().nth(1).expect("usage: gecko-sim <path.bin>");
@@ -20,19 +22,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .store_byte(MAIN_BASE, &file)
         .expect("failed to load binary");
 
+    const LOCK_HOLD_TIME: std::time::Duration = std::time::Duration::from_millis(2);
+    const SLEEP_BETWEEN_BATCHES: std::time::Duration = std::time::Duration::from_millis(1);
+    const INSTRUCTIONS_BETWEEN_CLOCK_CHECKS: u32 = 1_000;
+
     let cpu_bus = Arc::clone(&bus);
-    let handle = thread::spawn(move || {
+    let _handle = thread::spawn(move || {
         let mut rf = RegisterFile::new();
         let mut pc: u32 = 0x80000000;
-        loop {
-            if let Err(e) = exec_one(&mut pc, &mut *cpu_bus.lock().unwrap(), &mut rf) {
-                println!("{:?}", e);
-                break;
-            };
+        'outer: loop {
+            let mut bus = cpu_bus.lock().unwrap();
+            let batch_start = std::time::Instant::now();
+            loop {
+                for _ in 0..INSTRUCTIONS_BETWEEN_CLOCK_CHECKS {
+                    if let Err(e) = exec_one(&mut pc, &mut *bus, &mut rf) {
+                        println!("{:?}", e);
+                        break 'outer;
+                    }
+                }
+                if batch_start.elapsed() >= LOCK_HOLD_TIME {
+                    break;
+                }
+            }
+            drop(bus);
+            thread::sleep(SLEEP_BETWEEN_BATCHES);
         }
     });
 
-    handle.join().unwrap();
+    // A fixed, non-resizable size makes most tiling window managers
+    // (Hyprland included) auto-float the window instead of tiling it —
+    // it doesn't make sense to tile a window that can't be resized.
+    let native_options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_inner_size([420.0, 500.0])
+            .with_resizable(false),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "gecko-sim",
+        native_options,
+        Box::new(|_cc| Ok(Box::new(crate::ui::GeckoApp::new(bus)))),
+    )
+    .expect("failed to run the app");
 
     Ok(())
 }

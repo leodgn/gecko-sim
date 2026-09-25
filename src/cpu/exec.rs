@@ -334,7 +334,14 @@ where
                 },
                 FUNC3_SLL => {
                     ir_name = "sll";
-                    |l: u32, r: u32| l << r
+                    // Bug fix (upstream lib-rv32): for the register-register
+                    // form, `r` is a full register value (0..=u32::MAX), not
+                    // already a small shift amount. The RISC-V spec says
+                    // only the low 5 bits matter (a u32 only has 32 bits to
+                    // shift through) — without masking, any register value
+                    // >= 32 panics ("shift with overflow") in debug builds.
+                    // Found by pressing JR in gol.s and hitting the crash.
+                    |l: u32, r: u32| l << (r & 0x1F)
                 }
                 FUNC3_SLT => {
                     ir_name = "slt";
@@ -352,11 +359,13 @@ where
                 FUNC3_SR => match decode_func7!(ir) {
                     FUNC7_SRA => {
                         ir_name = "sra";
-                        |l: u32, r: u32| ((l as i32) >> r) as u32 // sign-extension
+                        // Same shift-amount masking bug as `sll` above.
+                        |l: u32, r: u32| ((l as i32) >> (r & 0x1F)) as u32 // sign-extension
                     }
                     FUNC7_SRL => {
                         ir_name = "srl";
-                        |l: u32, r: u32| l >> r
+                        // Same shift-amount masking bug as `sll` above.
+                        |l: u32, r: u32| l >> (r & 0x1F)
                     }
                     _ => return Err(RiscvError::InvalidFunc3Error(ir, decode_func3!(ir))),
                 },
