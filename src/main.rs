@@ -1,10 +1,13 @@
 use crate::bus::{Bus, MAIN_BASE};
 use crate::cpu::exec_one;
 use crate::regfile::RegisterFile;
+use crate::ui::BoardState;
 use std::env::args;
 use std::fs::read;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 mod bus;
 mod cpu;
@@ -16,36 +19,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = args().nth(1).expect("usage: gecko-sim <path.bin>");
     let file = read(path)?;
 
-    let bus = Arc::new(Mutex::new(Bus::new()));
-    bus.lock()
-        .unwrap()
-        .store_byte(MAIN_BASE, &file)
+    let mut bus = Bus::new();
+    bus.store_byte(MAIN_BASE, &file)
         .expect("failed to load binary");
 
-    const LOCK_HOLD_TIME: std::time::Duration = std::time::Duration::from_millis(2);
-    const SLEEP_BETWEEN_BATCHES: std::time::Duration = std::time::Duration::from_millis(1);
+    // `Bus` (RAM included) is NOT shared with the UI thread. Sharing the
+    // whole thing behind one Mutex — simple at first — turned out to cause
+    // a real, reproducible problem: a CPU thread running flat-out and a UI
+    // thread both wanting the same lock settled into a stable ~90%/~70%
+    // CPU standoff, confirmed with a headless repro and with real clicks
+    // (via ydotool) on the actual running window, not just guessed at.
+    //
+    // Instead, only the tiny slice of state the UI actually needs to draw
+    // (`BoardState`: LEDs + 7-seg) is shared, published by the CPU thread
+    // once per batch — the lock is only ever held for a few cheap array
+    // copies. Button presses go the other way through a lock-free
+    // `AtomicU32` bitmask instead of a lock at all.
+    let board_state = Arc::new(Mutex::new(BoardState::new()));
+    let pending_presses = Arc::new(AtomicU32::new(0));
+
+    const BATCH_DURATION: Duration = Duration::from_millis(3);
     const INSTRUCTIONS_BETWEEN_CLOCK_CHECKS: u32 = 1_000;
 
-    let cpu_bus = Arc::clone(&bus);
+    let cpu_board_state = Arc::clone(&board_state);
+    let cpu_pending_presses = Arc::clone(&pending_presses);
     let _handle = thread::spawn(move || {
         let mut rf = RegisterFile::new();
-        let mut pc: u32 = 0x80000000;
-        'outer: loop {
-            let mut bus = cpu_bus.lock().unwrap();
-            let batch_start = std::time::Instant::now();
+        let mut pc: u32 = MAIN_BASE;
+        loop {
+            // Drain whatever buttons were pressed since the last batch.
+            let pressed = cpu_pending_presses.swap(0, Ordering::AcqRel);
+            for bit in 0..10u8 {
+                if pressed & (1 << bit) != 0 {
+                    bus.press_button(bit);
+                }
+            }
+
+            let batch_start = Instant::now();
             loop {
                 for _ in 0..INSTRUCTIONS_BETWEEN_CLOCK_CHECKS {
-                    if let Err(e) = exec_one(&mut pc, &mut *bus, &mut rf) {
+                    if let Err(e) = exec_one(&mut pc, &mut bus, &mut rf) {
                         println!("{:?}", e);
-                        break 'outer;
+                        return;
                     }
                 }
-                if batch_start.elapsed() >= LOCK_HOLD_TIME {
+                if batch_start.elapsed() >= BATCH_DURATION {
                     break;
                 }
             }
-            drop(bus);
-            thread::sleep(SLEEP_BETWEEN_BATCHES);
+
+            // Publish a fresh snapshot for the UI to draw.
+            let mut state = cpu_board_state.lock().unwrap();
+            state.leds_red = bus.leds().red();
+            state.leds_green = bus.leds().green();
+            state.leds_blue = bus.leds().blue();
+            state.seven_segs = bus.seven_segs();
         }
     });
 
@@ -62,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native(
         "gecko-sim",
         native_options,
-        Box::new(|_cc| Ok(Box::new(crate::ui::GeckoApp::new(bus)))),
+        Box::new(|_cc| Ok(Box::new(crate::ui::GeckoApp::new(board_state, pending_presses)))),
     )
     .expect("failed to run the app");
 

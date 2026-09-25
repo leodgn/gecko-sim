@@ -1,8 +1,21 @@
 //! The `eframe`/`egui` UI: draws the LED grid, the 7-segment displays, and
 //! the button/joystick/dip-switch controls, faithfully to the `cs200`
-//! extension's board layout (see the design doc). Pure drawing code — no
-//! CPU/bus logic lives here beyond reading `Bus`'s public getters and
-//! calling `Bus::press_button` on clicks.
+//! extension's board layout (see the design doc).
+//!
+//! Deliberately does **not** touch `Bus` (or any lock protecting it)
+//! directly. Sharing the whole `Bus` (RAM included) behind one `Mutex`
+//! between the CPU thread (running flat-out) and this UI thread caused a
+//! real, reproducible steady-state lock-contention problem: both threads
+//! settled into a stable ~90%/~70% CPU regime fighting over the same lock,
+//! confirmed with a headless repro and with real automated clicks (via
+//! `ydotool`) on the running window, not just guessed at. Instead:
+//! - `BoardState` is a tiny, cheap-to-copy snapshot (LEDs + 7-seg) that the
+//!   CPU thread publishes periodically (see `main.rs`) — the lock guarding
+//!   it is only ever held for a few array copies, not for the CPU thread's
+//!   real work.
+//! - Button presses go through a lock-free `AtomicU32` bitmask instead of
+//!   a lock at all: `press` just OR's a bit in, the CPU thread drains and
+//!   clears it once per batch.
 //!
 //! Named button-bit mapping (see `ressources/hardware-spec.md`):
 //! - directional pad (JoyStick in the reference extension): JC=0, JR=1,
@@ -15,9 +28,8 @@
 //! at all (see the design doc: no MMIO address exists for them), their
 //! state lives purely in this struct.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-
-use crate::bus::Bus;
 
 const JC: u8 = 0;
 const JR: u8 = 1;
@@ -30,15 +42,38 @@ const BUTTON_2: u8 = 7;
 const BUTTON_UNNAMED_A: u8 = 8;
 const BUTTON_UNNAMED_B: u8 = 9;
 
+/// A cheap-to-copy snapshot of everything the UI needs to draw. Published
+/// by the CPU thread periodically; never contains the RAM/registers the UI
+/// has no business touching.
+pub struct BoardState {
+    pub leds_red: [[bool; 12]; 10],
+    pub leds_green: [[bool; 12]; 10],
+    pub leds_blue: [[bool; 12]; 10],
+    pub seven_segs: u32,
+}
+
+impl BoardState {
+    pub fn new() -> Self {
+        Self {
+            leds_red: [[false; 12]; 10],
+            leds_green: [[false; 12]; 10],
+            leds_blue: [[false; 12]; 10],
+            seven_segs: 0,
+        }
+    }
+}
+
 pub struct GeckoApp {
-    bus: Arc<Mutex<Bus>>,
+    board_state: Arc<Mutex<BoardState>>,
+    pending_presses: Arc<AtomicU32>,
     dip_switches: [bool; 8],
 }
 
 impl GeckoApp {
-    pub fn new(bus: Arc<Mutex<Bus>>) -> Self {
+    pub fn new(board_state: Arc<Mutex<BoardState>>, pending_presses: Arc<AtomicU32>) -> Self {
         Self {
-            bus,
+            board_state,
+            pending_presses,
             dip_switches: [false; 8],
         }
     }
@@ -54,9 +89,10 @@ impl GeckoApp {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let origin = response.rect.min;
 
-        let bus = self.bus.lock().unwrap();
-        let leds = bus.leds();
-        let (red, green, blue) = (leds.red(), leds.green(), leds.blue());
+        let (red, green, blue) = {
+            let state = self.board_state.lock().unwrap();
+            (state.leds_red, state.leds_green, state.leds_blue)
+        };
 
         for row in 0..10 {
             for col in 0..12 {
@@ -70,7 +106,13 @@ impl GeckoApp {
                     pos2(top_left.x, top_left.y),
                     vec2(cell_w - gap, cell_h - gap),
                 );
-                painter.rect(rect, 2.0, color, Stroke::new(1.0, Color32::GRAY), eframe::egui::StrokeKind::Inside);
+                painter.rect(
+                    rect,
+                    2.0,
+                    color,
+                    Stroke::new(1.0, Color32::GRAY),
+                    eframe::egui::StrokeKind::Inside,
+                );
             }
         }
     }
@@ -83,7 +125,7 @@ impl GeckoApp {
     fn draw_seven_segs(&self, ui: &mut eframe::egui::Ui) {
         use eframe::egui::{Color32, Sense, Stroke, pos2, vec2};
 
-        let value = self.bus.lock().unwrap().seven_segs();
+        let value = self.board_state.lock().unwrap().seven_segs;
         let digits = [
             (value >> 24) & 0xFF,
             (value >> 16) & 0xFF,
@@ -110,13 +152,13 @@ impl GeckoApp {
             let segment_color = |bit: u32| if pattern & (1 << bit) != 0 { lit } else { unlit };
 
             let segments = [
-                (pos2(x, y), pos2(x + digit_w, y), 0),                      // a: top
-                (pos2(x + digit_w, y), pos2(x + digit_w, mid_y), 1),        // b: top-right
+                (pos2(x, y), pos2(x + digit_w, y), 0), // a: top
+                (pos2(x + digit_w, y), pos2(x + digit_w, mid_y), 1), // b: top-right
                 (pos2(x + digit_w, mid_y), pos2(x + digit_w, y + digit_h), 2), // c: bottom-right
-                (pos2(x, y + digit_h), pos2(x + digit_w, y + digit_h), 3),  // d: bottom
-                (pos2(x, mid_y), pos2(x, y + digit_h), 4),                  // e: bottom-left
-                (pos2(x, y), pos2(x, mid_y), 5),                            // f: top-left
-                (pos2(x, mid_y), pos2(x + digit_w, mid_y), 6),              // g: middle
+                (pos2(x, y + digit_h), pos2(x + digit_w, y + digit_h), 3), // d: bottom
+                (pos2(x, mid_y), pos2(x, y + digit_h), 4), // e: bottom-left
+                (pos2(x, y), pos2(x, mid_y), 5),       // f: top-left
+                (pos2(x, mid_y), pos2(x + digit_w, mid_y), 6), // g: middle
             ];
 
             for (from, to, bit) in segments {
@@ -125,8 +167,10 @@ impl GeckoApp {
         }
     }
 
+    /// Lock-free: just OR's the bit in. The CPU thread drains and clears
+    /// this bitmask once per batch (see `main.rs`).
     fn press(&self, bit: u8) {
-        self.bus.lock().unwrap().press_button(bit);
+        self.pending_presses.fetch_or(1 << bit, Ordering::AcqRel);
     }
 
     fn draw_joystick(&self, ui: &mut eframe::egui::Ui) {
@@ -201,10 +245,7 @@ impl eframe::App for GeckoApp {
         // The CPU thread mutates shared state independently of user input,
         // so we need to keep redrawing periodically rather than only on
         // input events (egui's default). Capped to ~60 fps rather than
-        // "as fast as possible": an uncapped `request_repaint()` made this
-        // thread hammer Bus's lock in as tight a loop as the CPU thread
-        // does, and the two competing for the same lock at max speed made
-        // the whole window unresponsive (the OS considered it hung).
+        // "as fast as possible".
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(16));
 
