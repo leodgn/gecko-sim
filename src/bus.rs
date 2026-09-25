@@ -28,9 +28,9 @@ use crate::cpu::traits::Memory;
 use crate::peripherals::{buttons::Buttons, leds::Leds, random::Random, seven_segs::SevenSegs};
 use std::cell::RefCell;
 
-const MAIN_BASE: u32 = 0x80000000;
+pub const MAIN_BASE: u32 = 0x80000000;
 const MAIN_SIZE: usize = 0x100000;
-const GAME_STATE_BASE: u32 = 0x90001000;
+pub const GAME_STATE_BASE: u32 = 0x90001000;
 const GAME_STATE_SIZE: usize = 0x300;
 const RANDOM: u32 = 0x40000000;
 const LEDS: u32 = 0x50000000;
@@ -268,5 +268,21 @@ mod tests {
         let first = bus.read_word(RANDOM).unwrap();
         let second = bus.read_word(RANDOM).unwrap();
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn bus_can_be_shared_and_mutated_across_threads() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let bus = Arc::new(Mutex::new(Bus::new()));
+        let other_thread_bus = Arc::clone(&bus);
+
+        let handle = thread::spawn(move || {
+            other_thread_bus.lock().unwrap().press_button(3);
+        });
+        handle.join().unwrap();
+
+        assert_eq!(bus.lock().unwrap().read_word(BUTTONS).unwrap(), 1 << 3);
     }
 }

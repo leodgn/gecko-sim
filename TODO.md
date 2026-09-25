@@ -142,13 +142,21 @@ Do them in this order (simplest to most useful for fast validation):
 
 ## 6. Multithreading: CPU running continuously + shared state
 
-- [ ] Run the execution loop on a dedicated thread (`std::thread::spawn`).
-- [ ] Share the LED framebuffer, seven-seg state, and `BUTTONS` register
-      between the CPU thread and the future UI thread via
-      `Arc<Mutex<...>>`.
-- [ ] Check it compiles and runs without deadlocking (the CPU thread must
-      never hold the lock longer than needed — take the lock, read/write,
-      release, no lock held across a whole loop iteration).
+- [x] Design choice: share the **whole `Bus`** behind one
+      `Arc<Mutex<Bus>>`, rather than a separate `Arc<Mutex<...>>` per piece
+      of state (LEDs/7-seg/BUTTONS) as originally sketched — one lock,
+      simpler to reason about, matches "clarity over perf".
+- [x] `main()`: `bus` is loaded once (`store_byte`) before spawning; `rf`
+      and `pc` live *inside* the spawned closure (never shared, only the
+      CPU thread ever needs them); the loop takes the lock once per
+      instruction (`&mut *cpu_bus.lock().unwrap()`), never across a whole
+      iteration. `main()` itself just `handle.join()`s at the end for now
+      (no UI thread yet — that's step 7).
+- [x] Verified against the real `gol.s` binary: runs continuously for
+      several seconds without crashing (stuck in `gol.s`'s own `INIT`
+      state loop waiting for button input, which doesn't exist yet — but
+      the whole load → CPU → bus → peripherals → dedicated-thread chain
+      works end to end). 38 tests pass.
 
 *Key Rust concepts for this project: `Arc`, `Mutex`, `std::thread`, `move`
 closures. Probably the most "new" part if you're coming from Scala — no

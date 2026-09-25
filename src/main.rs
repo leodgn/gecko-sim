@@ -1,10 +1,10 @@
-use std::env::args;
-use std::fs::read;
-
-use crate::bus::Bus;
+use crate::bus::{Bus, MAIN_BASE};
 use crate::cpu::exec_one;
 use crate::regfile::RegisterFile;
-
+use std::env::args;
+use std::fs::read;
+use std::sync::{Arc, Mutex};
+use std::thread;
 mod bus;
 mod cpu;
 mod peripherals;
@@ -14,18 +14,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = args().nth(1).expect("usage: gecko-sim <path.bin>");
     let file = read(path)?;
 
-    let mut bus = Bus::new();
-    bus.store_byte(0x80000000, &file).expect("failed to load binary");
+    let bus = Arc::new(Mutex::new(Bus::new()));
+    bus.lock()
+        .unwrap()
+        .store_byte(MAIN_BASE, &file)
+        .expect("failed to load binary");
 
-    let mut rf = RegisterFile::new();
-    let mut pc: u32 = 0x80000000;
+    let cpu_bus = Arc::clone(&bus);
+    let handle = thread::spawn(move || {
+        let mut rf = RegisterFile::new();
+        let mut pc: u32 = 0x80000000;
+        loop {
+            if let Err(e) = exec_one(&mut pc, &mut *cpu_bus.lock().unwrap(), &mut rf) {
+                println!("{:?}", e);
+                break;
+            };
+        }
+    });
 
-    loop {
-        if let Err(e) = exec_one(&mut pc, &mut bus, &mut rf) {
-            println!("{:?}", e);
-            break;
-        };
-    }
+    handle.join().unwrap();
 
     Ok(())
 }
