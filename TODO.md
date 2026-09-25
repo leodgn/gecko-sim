@@ -63,32 +63,42 @@ understand `macro_rules!` in depth, just how to use them).*
 
 ## 3. Memory bus (flat RAM, no peripherals yet)
 
-- [ ] Write a `Bus` type implementing lib-rv32's `Memory` trait (`fetch`,
-      `read_word/half_word/byte`, `write_word/half_word/byte`). For now:
-      just two flat RAM regions (see the memory map in the spec) — no
-      peripheral dispatch yet.
-- [ ] Watch out for the address → index translation into the `Vec`/array
-      (address `0x80000000` must not be the literal index 0 of a
-      multi-gigabyte `Vec` — compute a per-region offset).
-- [ ] Test: write a word at an address, read it back, check equality. Also
-      test `read_byte`/`read_half_word` on a word you just wrote (mind
-      endianness — RISC-V is little-endian).
+- [x] `src/bus.rs`: `Bus` with two flat `Vec<u8>` regions (main:
+      `0x80000000`+, game state: `0x90001000..0x90001300`), `locate()`
+      translates an address to (region, offset), `impl Memory for Bus`.
+- [x] `read_bytes`/`write_bytes` factor out the shared little-endian
+      byte-combining logic between the word/half-word variants.
+- [x] All 5 bus tests pass (17 total).
 
 *Rust concepts: `Vec<u8>`, indexing, error handling with `Result` for
 out-of-range accesses.*
 
 ## 4. Binary loader
 
-- [ ] Read a `.bin` file (`std::fs::read`) and copy it into the `Bus`'s RAM
-      starting at `0x80000000`.
-- [ ] Minimal execution loop: `pc = 0x80000000`, a loop calling
-      `exec_one(&mut pc, &mut bus, &mut regfile)` inside `loop {}`, print
-      the error and stop if `exec_one` returns `Err`.
-- [ ] Manual test: write a tiny RISC-V assembly program (a few RV32I
-      instructions), assemble it into a `.bin` (`riscv64-unknown-elf-gcc
-      -march=rv32i -mabi=ilp32 ...` + `objcopy`, see the course Makefile),
-      load it, check via logs that the registers hold the expected values
-      at the end.
+- [x] `Bus::store_byte(&mut self, addr: u32, bytes: &[u8]) -> Result<(),
+      RiscvError>` — writes a whole byte slice starting at `addr`, one byte
+      at a time via `write_byte`, propagating errors with `?`. (Named
+      `store_byte`, not `load_bytes` — matches the CPU's own STORE/LOAD
+      vocabulary already used in `exec.rs`: writing to memory is a
+      "store", reading a register out to memory would be a "load" from
+      the CPU's point of view. Good catch.)
+- [x] `main()` reads a `.bin` path from the first CLI argument
+      (`std::env::args().nth(1)`), loads it via `std::fs::read` + `?`
+      (note: `main`'s signature had to become
+      `fn main() -> Result<(), Box<dyn std::error::Error>>` for `?` to be
+      usable at all — it needs a `Result`-returning function to propagate
+      into), then `store_byte`s it into a fresh `Bus` at `0x80000000`. No
+      real `gol.s` `.bin` tested yet (no RISC-V toolchain confirmed
+      installed) — validated instead via the hand-encoded program test
+      below.
+- [x] Minimal execution loop in `main()`: `pc = 0x80000000`, `loop { if let
+      Err(e) = exec_one(&mut pc, &mut bus, &mut rf) { println!("{:?}", e);
+      break; } }`.
+- [x] Test written in `src/main.rs` (or wherever the loop ends up):
+      hand-encode a handful of RV32I instructions (reuse
+      `cpu::instructions` constants or hand-encode like in the sub/add
+      spike), load them via `load_bytes`, run the loop, check the
+      registers hold the expected values at the end.
 
 *Rust concepts: `std::fs`, `io::Result`, controlled infinite loops,
 `std::process::exit` or `panic!` for a clean stop on error.*
@@ -97,21 +107,35 @@ out-of-range accesses.*
 
 Do them in this order (simplest to most useful for fast validation):
 
-- [ ] **`RANDOM`** (`0x40000000`): xorshift32 with a fixed, hardcoded seed.
-      Test: two fresh instances produce the same sequence of reads.
-- [ ] **`BUTTONS`** (`0x70000004`): "falling edge" logic (a click sets the
-      bit to 1, it stays 1) + "any write clears the whole register". Test:
-      simulate a click, read the register, simulate a CPU write, check
-      everything is 0.
-- [ ] **`SEVEN_SEGS`** (`0x60000000`): normal read/write of a 4-byte word.
-      Trivial test (write/read back).
-- [ ] **`LEDS`** (`0x50000000`): the most complex of the 4 — decode the 4
-      row/column selection cases from `hardware-spec.md` and update a
-      `[[u8; 12]; 10]` framebuffer per color. Write-only, reads always
-      return 0. Test each selection case separately (all rows + all
-      columns, one column, one row, a single LED).
-- [ ] Wire the 4 peripherals into `Bus::read_*`/`write_*` by address range
-      (replace the bus's TODO with real dispatch).
+- [x] **`RANDOM`** (`0x40000000`): xorshift32 with a fixed, hardcoded seed
+      (`src/peripherals/random.rs`). Both tests pass (20 total).
+- [x] **`BUTTONS`** (`0x70000004`, `src/peripherals/buttons.rs`): "falling
+      edge" logic (`press` sets a bit, stays until `clear` resets the whole
+      register). 5 tests pass.
+- [x] **`SEVEN_SEGS`** (`0x60000000`, `src/peripherals/seven_segs.rs`):
+      plain read/write of a `u32`. 2 tests pass.
+- [x] **`LEDS`** (`0x50000000`, `src/peripherals/leds.rs`): the most
+      complex of the 4 — decodes the 4 row/column selection cases from
+      `hardware-spec.md`. Storage ended up as `[[bool; 12]; 10]` per color
+      rather than the bitmask originally sketched in the design doc —
+      simpler to decode into, one boolean per LED; a bitmask conversion
+      (e.g. to match the `cs200` extension's `LedArray_t` shape) can happen
+      later, isolated in the UI code, if needed. 6 tests pass (33 total).
+- [x] Wired the 4 peripherals into `Bus::read_word`/`write_word` (byte/
+      half-word access stays RAM-only — `gol.s` only ever touches
+      peripherals via `lw`/`sw`, full words).
+      Hit a real design tension: `read_word` only gets `&self` (per the
+      vendored `Memory` trait), but reading `RANDOM` has a genuine side
+      effect (it advances the PRNG). Two ways to resolve it were discussed
+      — changing the vendored trait's read methods to `&mut self` (free,
+      since `exec_one` already only ever holds `&mut M`), vs. wrapping
+      `random: RefCell<Random>` for interior mutability. Went with
+      `RefCell` (`self.random.borrow_mut().next()`) to move faster; the
+      trait-redesign alternative is still on the table if this ever feels
+      wrong later.
+      `Bus::press_button` and `Bus::leds()` added as the UI-facing entry
+      points (separate from the CPU-facing `write_word`/`read_word`
+      dispatch, which only `exec_one` calls). 37 tests pass.
 
 *Rust concepts: `match` on ranges/bits, bitwise operations (`&`, `|`, `<<`,
 `>>`), unit tests (`#[test]`, `assert_eq!`).*

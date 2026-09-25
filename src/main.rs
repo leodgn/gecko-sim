@@ -7,6 +7,7 @@ use crate::regfile::RegisterFile;
 
 mod bus;
 mod cpu;
+mod peripherals;
 mod regfile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

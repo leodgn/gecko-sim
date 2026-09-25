@@ -25,15 +25,25 @@
 //! `u16::to_le_bytes`/`from_le_bytes` do the conversion for you.
 
 use crate::cpu::traits::Memory;
+use crate::peripherals::{buttons::Buttons, leds::Leds, random::Random, seven_segs::SevenSegs};
+use std::cell::RefCell;
 
 const MAIN_BASE: u32 = 0x80000000;
 const MAIN_SIZE: usize = 0x100000;
 const GAME_STATE_BASE: u32 = 0x90001000;
 const GAME_STATE_SIZE: usize = 0x300;
+const RANDOM: u32 = 0x40000000;
+const LEDS: u32 = 0x50000000;
+const SEVEN_SEGS: u32 = 0x60000000;
+const BUTTONS: u32 = 0x70000004;
 
 pub struct Bus {
     main: Vec<u8>,
     game_state: Vec<u8>,
+    random: RefCell<Random>,
+    leds: Leds,
+    seven_segs: SevenSegs,
+    buttons: Buttons,
 }
 
 impl Bus {
@@ -41,6 +51,10 @@ impl Bus {
         Self {
             main: vec![0; MAIN_SIZE],
             game_state: vec![0; GAME_STATE_SIZE],
+            random: RefCell::new(Random::new()),
+            leds: Leds::new(),
+            seven_segs: SevenSegs::new(),
+            buttons: Buttons::new(),
         }
     }
 
@@ -95,6 +109,14 @@ impl Bus {
         }
         Ok(())
     }
+
+    pub fn leds(&self) -> &Leds {
+        &self.leds
+    }
+
+    pub fn press_button(&mut self, bit: u8){
+        self.buttons.press(bit);
+    }
 }
 
 impl Memory for Bus {
@@ -103,6 +125,15 @@ impl Memory for Bus {
     }
 
     fn read_word(&self, addr: u32) -> Result<u32, crate::cpu::RiscvError> {
+        if addr == RANDOM {
+            return Ok(self.random.borrow_mut().next());
+        } else if addr == LEDS {
+            return Ok(0);
+        } else if addr == SEVEN_SEGS {
+            return Ok(self.seven_segs.read());
+        } else if addr == BUTTONS {
+            return Ok(self.buttons.read());
+        }
         self.read_bytes(addr, 4)
     }
 
@@ -121,6 +152,18 @@ impl Memory for Bus {
     }
 
     fn write_word(&mut self, addr: u32, data: u32) -> Result<(), crate::cpu::RiscvError> {
+        if addr == RANDOM {
+            return Ok(());
+        } else if addr == LEDS {
+            self.leds.write(data);
+            return Ok(());
+        } else if addr == SEVEN_SEGS {
+            self.seven_segs.write(data);
+            return Ok(());
+        } else if addr == BUTTONS {
+            self.buttons.clear();
+            return Ok(());
+        }
         self.write_bytes(addr, data, 4)
     }
 
@@ -183,5 +226,47 @@ mod tests {
         let bus = Bus::new();
         // Nowhere near either region: not RAM, not (yet) a peripheral.
         assert!(bus.read_word(0x12345678).is_err());
+    }
+
+    const RANDOM: u32 = 0x40000000;
+    const LEDS: u32 = 0x50000000;
+    const SEVEN_SEGS: u32 = 0x60000000;
+    const BUTTONS: u32 = 0x70000004;
+
+    #[test]
+    fn leds_writes_update_state_but_reads_always_return_zero() {
+        let mut bus = Bus::new();
+        // all rows, all cols, red selected, on: see peripherals::leds for
+        // the command format.
+        let all_red_on: u32 = (1 << 16) | (1 << 8) | (0b1111 << 4) | 0b1111;
+        bus.write_word(LEDS, all_red_on).unwrap();
+
+        assert_eq!(bus.read_word(LEDS).unwrap(), 0);
+        assert_eq!(bus.leds().red(), [[true; 12]; 10]);
+    }
+
+    #[test]
+    fn seven_segs_round_trips_through_the_bus() {
+        let mut bus = Bus::new();
+        bus.write_word(SEVEN_SEGS, 0x3F065B4F).unwrap();
+        assert_eq!(bus.read_word(SEVEN_SEGS).unwrap(), 0x3F065B4F);
+    }
+
+    #[test]
+    fn buttons_pressed_are_visible_and_cleared_by_any_cpu_write() {
+        let mut bus = Bus::new();
+        bus.press_button(2);
+        assert_eq!(bus.read_word(BUTTONS).unwrap(), 1 << 2);
+
+        bus.write_word(BUTTONS, 0).unwrap();
+        assert_eq!(bus.read_word(BUTTONS).unwrap(), 0);
+    }
+
+    #[test]
+    fn random_reads_advance_the_sequence() {
+        let mut bus = Bus::new();
+        let first = bus.read_word(RANDOM).unwrap();
+        let second = bus.read_word(RANDOM).unwrap();
+        assert_ne!(first, second);
     }
 }
