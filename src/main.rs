@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = match Path::new(&path).extension().and_then(|ext| ext.to_str()) {
         Some("s") => {
             let source = read_to_string(&path)?;
-            match assemble(&source) {
+            match assemble(&path, &source) {
                 Ok(bin) => bin,
                 Err(e) => {
                     eprintln!("{e}");

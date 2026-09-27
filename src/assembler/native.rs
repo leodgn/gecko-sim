@@ -1,13 +1,17 @@
 //! Native `.s` support: assembles a program with the RISC-V GNU toolchain
 //! installed on the user's machine.
 //!
-//! Runs the same pipeline as the course build, in a temporary directory:
+//! Runs the same pipeline as the course build, in a temporary directory
+//! (here for a source file named `gol.s`):
 //!
 //! ```text
-//! <prefix>as -march=rv32i -mabi=ilp32 program.s -o program.o
-//! <prefix>ld -m elf32lriscv -T mmio.ld program.o -o program.elf
-//! <prefix>objcopy -O binary program.elf program.bin
+//! <prefix>as -march=rv32i -mabi=ilp32 gol.s -o gol.o
+//! <prefix>ld -m elf32lriscv -T mmio.ld gol.o -o gol.elf
+//! <prefix>objcopy -O binary gol.elf gol.bin
 //! ```
+//!
+//! The files are named after the user's file so that binutils' messages
+//! point at it (`gol.s:12: Error: ...`).
 //!
 //! The toolchain's prefix depends on how it was installed, so the ones in
 //! `TOOLCHAIN_PREFIXES` are tried in order. `ld` always warns that `_start`
@@ -71,17 +75,25 @@ impl From<std::io::Error> for AssembleError {
 /// Assembles and links `source` (the text of a `.s` file) and returns the
 /// raw binary image, ready to load at `MAIN_BASE`.
 ///
+/// `file_name` is the name of the file `source` was read from, e.g.
+/// `gol.s`; it only appears in error messages. Any directory part is
+/// ignored.
+///
 /// # Errors
 ///
 /// See `AssembleError`: no toolchain installed, an assembler or linker
 /// error in the program, or an I/O error.
-pub fn assemble(source: &str) -> Result<Vec<u8>, AssembleError> {
-    assemble_with(TOOLCHAIN_PREFIXES, source)
+pub fn assemble(file_name: &str, source: &str) -> Result<Vec<u8>, AssembleError> {
+    assemble_with(TOOLCHAIN_PREFIXES, file_name, source)
 }
 
 /// `assemble`, with the list of toolchain prefixes to try as a parameter,
 /// so tests can simulate a missing toolchain.
-fn assemble_with(prefixes: &[&str], source: &str) -> Result<Vec<u8>, AssembleError> {
+fn assemble_with(
+    prefixes: &[&str],
+    file_name: &str,
+    source: &str,
+) -> Result<Vec<u8>, AssembleError> {
     let prefix = prefixes
         .iter()
         .find(|prefix| is_installed(prefix))
@@ -89,48 +101,43 @@ fn assemble_with(prefixes: &[&str], source: &str) -> Result<Vec<u8>, AssembleErr
             tried: prefixes.iter().map(|p| p.to_string()).collect(),
         })?;
 
+    // Keep only the last path component: the file is created inside the
+    // temporary directory, and `../x.s` must not escape it.
+    let file_name = Path::new(file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("program.s");
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("program");
+    let object = format!("{stem}.o");
+    let elf = format!("{stem}.elf");
+    let bin = format!("{stem}.bin");
+
     // Deleted with its content when `dir` is dropped, on every return path.
     let dir = tempfile::tempdir()?;
 
-    fs::write(dir.path().join("program.s"), source)?;
+    fs::write(dir.path().join(file_name), source)?;
     fs::write(dir.path().join("mmio.ld"), LINKER_SCRIPT)?;
 
     run(
         prefix,
         "as",
-        &[
-            "-march=rv32i",
-            "-mabi=ilp32",
-            "program.s",
-            "-o",
-            "program.o",
-        ],
+        &["-march=rv32i", "-mabi=ilp32", file_name, "-o", &object],
         dir.path(),
     )?;
 
     run(
         prefix,
         "ld",
-        &[
-            "-m",
-            "elf32lriscv",
-            "-T",
-            "mmio.ld",
-            "program.o",
-            "-o",
-            "program.elf",
-        ],
+        &["-m", "elf32lriscv", "-T", "mmio.ld", &object, "-o", &elf],
         dir.path(),
     )?;
 
-    run(
-        prefix,
-        "objcopy",
-        &["-O", "binary", "program.elf", "program.bin"],
-        dir.path(),
-    )?;
+    run(prefix, "objcopy", &["-O", "binary", &elf, &bin], dir.path())?;
 
-    Ok(fs::read(dir.path().join("program.bin"))?)
+    Ok(fs::read(dir.path().join(&bin))?)
 }
 
 /// Returns whether `<prefix>as` exists and can be started.
@@ -170,7 +177,7 @@ mod tests {
 
     #[test]
     fn assembles_a_single_instruction() {
-        let bin = assemble("addi x1, x0, 5\n").unwrap();
+        let bin = assemble("one.s", "addi x1, x0, 5\n").unwrap();
 
         // addi x1, x0, 5 = 0x00500093, little-endian.
         assert_eq!(bin, vec![0x93, 0x00, 0x50, 0x00]);
@@ -200,7 +207,7 @@ table:
     .word 0
     .word 0x3f063f06
 ";
-        let bin = assemble(source).unwrap();
+        let bin = assemble("seven_segs.s", source).unwrap();
         let mut runner = CpuRunner::new(&bin).unwrap();
         let state = runner.board_state();
 
@@ -211,13 +218,13 @@ table:
 
     #[test]
     fn syntax_error_reports_the_assembler_output() {
-        let err = assemble("addi x1, x0\n").unwrap_err();
+        let err = assemble("gol.s", "addi x1, x0\n").unwrap_err();
 
         match &err {
             AssembleError::ToolFailed { tool, stderr } => {
                 assert_eq!(tool, "as");
                 assert!(
-                    stderr.contains(":1: Error: illegal operands"),
+                    stderr.contains("gol.s:1: Error: illegal operands"),
                     "stderr should be binutils' own message, got: {stderr}"
                 );
             }
@@ -231,7 +238,7 @@ table:
 
     #[test]
     fn undefined_label_is_reported_by_the_linker() {
-        let err = assemble("j nowhere\n").unwrap_err();
+        let err = assemble("gol.s", "j nowhere\n").unwrap_err();
 
         match &err {
             AssembleError::ToolFailed { tool, stderr } => {
@@ -240,6 +247,22 @@ table:
                     stderr.contains("undefined reference to `nowhere'"),
                     "got: {stderr}"
                 );
+                assert!(
+                    stderr.contains("gol.o"),
+                    "the object file must be named after the source, got: {stderr}"
+                );
+            }
+            other => panic!("expected ToolFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn directory_part_of_the_file_name_is_ignored() {
+        let err = assemble("../../somewhere/gol.s", "addi x1, x0\n").unwrap_err();
+
+        match &err {
+            AssembleError::ToolFailed { stderr, .. } => {
+                assert!(stderr.starts_with("gol.s:"), "got: {stderr}");
             }
             other => panic!("expected ToolFailed, got {other:?}"),
         }
@@ -247,7 +270,7 @@ table:
 
     #[test]
     fn missing_toolchain_lists_the_prefixes_tried() {
-        let err = assemble_with(&["no-such-toolchain-"], "addi x1, x0, 5\n").unwrap_err();
+        let err = assemble_with(&["no-such-toolchain-"], "one.s", "addi x1, x0, 5\n").unwrap_err();
 
         match &err {
             AssembleError::ToolchainNotFound { tried } => {
