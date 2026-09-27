@@ -196,3 +196,38 @@ what you may have seen elsewhere).*
 - [x] Display speed: if 60 Hz rendering struggles to keep up with a CPU
       running at full speed, consider a throttle or simply showing the
       "latest visible state" without blocking the CPU thread.
+
+## 10. `.s` input + web distribution (`v0.2.0`, branch `web`)
+
+Design: `docs/superpowers/specs/2026-09-25-web-distribution-design.md`.
+`v0.1.0` (tag) is the native app as it was before this section. Keep the
+existing code as it is: changes here are moves or additions.
+
+- [ ] **Extract `CpuRunner`** (`src/runner.rs`): move the CPU-thread
+      closure's state and one iteration of its outer `loop` into
+      `CpuRunner::new` / `run_batch`. `main.rs` spawns the same thread,
+      which now just calls `run_batch` in a loop. Native behavior must not
+      change. Switch `Instant` to the `web-time` crate here.
+- [ ] **Native `.s` input** (`src/assembler/native.rs`): find a local
+      RISC-V toolchain, run `as` → `ld` → `objcopy` in a temporary
+      directory with the embedded `assets/mmio.ld`. `main.rs` picks by
+      extension.
+- [ ] **Web skeleton**: `cfg` split (`main.rs` native-only, `src/web.rs`
+      wasm-only), Trunk + `index.html` from `eframe_template`. The page
+      shows the board, off, with the "drop your file" message.
+- [ ] **Web `.bin` drop**: dropping a `.bin` creates a `CpuRunner` and the
+      board runs; `run_batch` inside each frame. CPU errors shown in a
+      panel.
+- [ ] **Web `.s` drop**: vendor the binutils wasm files, write
+      `web/assemble.js`, bridge it from `src/assembler/web.rs` with
+      `wasm-bindgen`, poll the result through a channel. Assembler errors
+      shown verbatim.
+- [ ] **CI + Pages**: GitHub Action running the tests, the native-vs-web
+      assembler parity check, the Trunk build and the Pages deploy.
+- [ ] **Release**: license (MIT?), README (web link + `cargo install`
+      for both tags), binutils GPLv3 notice on the page, then
+      `git merge --no-ff web` into `master` and tag `v0.2.0`.
+
+*Rust concepts: moving code into a struct with `&mut self` methods,
+`#[cfg(target_arch = ...)]`, `std::process::Command`, `wasm-bindgen`,
+futures without an async runtime (`spawn_local` + a channel).*

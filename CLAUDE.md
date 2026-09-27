@@ -46,6 +46,15 @@ debugging: the program starts running immediately on launch
 (`PC = 0x80000000`) and runs continuously, like a real board being powered
 on.
 
+**Web build (amendment, 2026-09-27)**: the same `eframe` UI is also
+compiled to WebAssembly and published on GitHub Pages, and both builds
+accept a `.s` file (see
+`docs/superpowers/specs/2026-09-25-web-distribution-design.md`). The
+native threading model is unchanged; on the web, where threads aren't
+available, the same `CpuRunner::run_batch` runs inside each UI frame.
+Guiding rule for this work: change the existing code as little as
+possible.
+
 ## Working mode (already decided, don't revisit without asking again)
 
 **The author writes all the code themselves**, as a Rust learning exercise.
