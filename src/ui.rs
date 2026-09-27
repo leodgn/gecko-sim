@@ -143,16 +143,22 @@ impl GeckoApp {
             let x = origin.x + i as f32 * (digit_w + gap);
             let y = origin.y;
             let mid_y = y + digit_h / 2.0;
-            let segment_color = |bit: u32| if pattern & (1 << bit) != 0 { lit } else { unlit };
+            let segment_color = |bit: u32| {
+                if pattern & (1 << bit) != 0 {
+                    lit
+                } else {
+                    unlit
+                }
+            };
 
             let segments = [
-                (pos2(x, y), pos2(x + digit_w, y), 0), // a: top
+                (pos2(x, y), pos2(x + digit_w, y), 0),               // a: top
                 (pos2(x + digit_w, y), pos2(x + digit_w, mid_y), 1), // b: top-right
                 (pos2(x + digit_w, mid_y), pos2(x + digit_w, y + digit_h), 2), // c: bottom-right
                 (pos2(x, y + digit_h), pos2(x + digit_w, y + digit_h), 3), // d: bottom
-                (pos2(x, mid_y), pos2(x, y + digit_h), 4), // e: bottom-left
-                (pos2(x, y), pos2(x, mid_y), 5),       // f: top-left
-                (pos2(x, mid_y), pos2(x + digit_w, mid_y), 6), // g: middle
+                (pos2(x, mid_y), pos2(x, y + digit_h), 4),           // e: bottom-left
+                (pos2(x, y), pos2(x, mid_y), 5),                     // f: top-left
+                (pos2(x, mid_y), pos2(x + digit_w, mid_y), 6),       // g: middle
             ];
 
             for (from, to, bit) in segments {

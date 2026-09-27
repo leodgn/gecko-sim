@@ -12,21 +12,16 @@
 //!   `BoardState` and records button presses in a shared `AtomicU32`
 //!   bitmask.
 
-use crate::bus::{Bus, MAIN_BASE};
-use crate::cpu::exec_one;
-use crate::regfile::RegisterFile;
-use crate::ui::BoardState;
+use runner::CpuRunner;
 use std::env::args;
 use std::fs::read;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
 
 mod bus;
 mod cpu;
 mod peripherals;
 mod regfile;
+mod runner;
 mod ui;
 
 /// Loads the program given on the command line, starts the CPU thread and
@@ -45,53 +40,17 @@ mod ui;
 /// Panics if no path is given, or if the program doesn't fit in main RAM.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = args().nth(1).expect("usage: gecko-sim <path.bin>");
-    let file = read(path)?;
+    let program = read(path)?;
 
-    let mut bus = Bus::new();
-    bus.store_byte(MAIN_BASE, &file)
-        .expect("failed to load binary");
-
-    let board_state = Arc::new(Mutex::new(BoardState::new()));
-    let pending_presses = Arc::new(AtomicU32::new(0));
-
-    /// How long the CPU thread runs between two board-state publications.
-    const BATCH_DURATION: Duration = Duration::from_millis(3);
-    /// How many instructions run between two checks of the batch clock.
-    const INSTRUCTIONS_BETWEEN_CLOCK_CHECKS: u32 = 1_000;
-
-    let cpu_board_state = Arc::clone(&board_state);
-    let cpu_pending_presses = Arc::clone(&pending_presses);
-    let _handle = thread::spawn(move || {
-        let mut rf = RegisterFile::new();
-        let mut pc: u32 = MAIN_BASE;
+    let mut runner = CpuRunner::new(&program).expect("failed to load program");
+    let board_state = runner.board_state();
+    let pending_presses = runner.pending_presses();
+    thread::spawn(move || {
         loop {
-            // Apply the buttons pressed since the last batch.
-            let pressed = cpu_pending_presses.swap(0, Ordering::AcqRel);
-            for bit in 0..10u8 {
-                if pressed & (1 << bit) != 0 {
-                    bus.press_button(bit);
-                }
+            if let Err(e) = runner.run_batch() {
+                println!("{:?}", e);
+                return;
             }
-
-            let batch_start = Instant::now();
-            loop {
-                for _ in 0..INSTRUCTIONS_BETWEEN_CLOCK_CHECKS {
-                    if let Err(e) = exec_one(&mut pc, &mut bus, &mut rf) {
-                        println!("{:?}", e);
-                        return;
-                    }
-                }
-                if batch_start.elapsed() >= BATCH_DURATION {
-                    break;
-                }
-            }
-
-            // Publish a fresh snapshot for the UI to draw.
-            let mut state = cpu_board_state.lock().unwrap();
-            state.leds_red = bus.leds().red();
-            state.leds_green = bus.leds().green();
-            state.leds_blue = bus.leds().blue();
-            state.seven_segs = bus.seven_segs();
         }
     });
 
@@ -106,7 +65,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native(
         "gecko-sim",
         native_options,
-        Box::new(|_cc| Ok(Box::new(crate::ui::GeckoApp::new(board_state, pending_presses)))),
+        Box::new(|_cc| {
+            Ok(Box::new(crate::ui::GeckoApp::new(
+                board_state,
+                pending_presses,
+            )))
+        }),
     )
     .expect("failed to run the app");
 

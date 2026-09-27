@@ -215,10 +215,22 @@ mod tests {
     /// their operands as unsigned, so -1 looked like 0xFFFFFFFF, i.e. huge.
     #[test]
     fn blt_and_bge_compare_as_signed() {
-        assert!(branch_taken(BLT_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "-1 < 1");
-        assert!(!branch_taken(BGE_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "!(-1 >= 1)");
-        assert!(!branch_taken(BLT_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]), "!(1 < -1)");
-        assert!(branch_taken(BGE_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]), "1 >= -1");
+        assert!(
+            branch_taken(BLT_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]),
+            "-1 < 1"
+        );
+        assert!(
+            !branch_taken(BGE_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]),
+            "!(-1 >= 1)"
+        );
+        assert!(
+            !branch_taken(BLT_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]),
+            "!(1 < -1)"
+        );
+        assert!(
+            branch_taken(BGE_X1_X2_8, &[(1, 1), (2, MINUS_ONE)]),
+            "1 >= -1"
+        );
     }
 
     /// The exact instruction `wait` in `gol.s` loops on: `sub s1, s1, a3`
@@ -236,8 +248,14 @@ mod tests {
 
     #[test]
     fn bltu_and_bgeu_compare_as_unsigned() {
-        assert!(!branch_taken(BLTU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "!(0xFFFFFFFF <u 1)");
-        assert!(branch_taken(BGEU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]), "0xFFFFFFFF >=u 1");
+        assert!(
+            !branch_taken(BLTU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]),
+            "!(0xFFFFFFFF <u 1)"
+        );
+        assert!(
+            branch_taken(BGEU_X1_X2_8, &[(1, MINUS_ONE), (2, 1)]),
+            "0xFFFFFFFF >=u 1"
+        );
     }
 
     /// Upstream lib-rv32 implemented `bgeu` as a strict `>`.
