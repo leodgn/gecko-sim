@@ -36,12 +36,13 @@ Success criteria:
 | Version | What | How to get it |
 |---|---|---|
 | `v0.1.0` (tag on `539adb2`, already created) | The native app exactly as it was before this work. `.bin` input only. | `cargo install --git <repo> --tag v0.1.0` |
-| `v0.2.0` | Native app with `.s` input + web build. | Web page on GitHub Pages, or `cargo install --git <repo> --tag v0.2.0` |
+| `v0.2.0` | Native app with `.s` input (local RISC-V GNU toolchain). | `cargo install --git <repo> --tag v0.2.0` |
+| `v0.3.0` | Web build. | Web page on GitHub Pages, or `cargo install --git <repo> --tag v0.3.0` |
 
 Everything shared by both builds (extracting `CpuRunner`, `.s` input on
 native) is committed on `master`, since it stands on its own. Only the
 web-specific work happens on a `web` branch, merged into `master` with
-`git merge --no-ff`, then tagged `v0.2.0`. The change of direction is
+`git merge --no-ff`, then tagged `v0.3.0`. The change of direction is
 visible as one branch in `git log --graph`. The web page links to the repo
 for those who prefer the native build.
 

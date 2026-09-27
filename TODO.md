@@ -197,7 +197,7 @@ what you may have seen elsewhere).*
       running at full speed, consider a throttle or simply showing the
       "latest visible state" without blocking the CPU thread.
 
-## 10. `.s` input + web distribution (`v0.2.0`)
+## 10. `.s` input (`v0.2.0`) + web distribution (`v0.3.0`)
 
 Everything shared by both builds (extracting `CpuRunner`, `.s` input)
 lands on `master`; only the web-specific work goes on a `web` branch.
@@ -231,7 +231,7 @@ existing code as it is: changes here are moves or additions.
       assembler parity check, the Trunk build and the Pages deploy.
 - [ ] **Release**: license (MIT?), README (web link + `cargo install`
       for both tags), binutils GPLv3 notice on the page, then
-      `git merge --no-ff web` into `master` and tag `v0.2.0`.
+      `git merge --no-ff web` into `master` and tag `v0.3.0`.
 
 *Rust concepts: moving code into a struct with `&mut self` methods,
 `#[cfg(target_arch = ...)]`, `std::process::Command`, `wasm-bindgen`,
