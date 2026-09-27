@@ -38,9 +38,9 @@ Success criteria:
 | `v0.1.0` (tag on `539adb2`, already created) | The native app exactly as it was before this work. `.bin` input only. | `cargo install --git <repo> --tag v0.1.0` |
 | `v0.2.0` | Native app with `.s` input + web build. | Web page on GitHub Pages, or `cargo install --git <repo> --tag v0.2.0` |
 
-Behavior-preserving refactors (extracting `CpuRunner`) are committed on
-`master`, since they stand on their own. The new features happen on a
-`web` branch, merged into `master` with
+Everything shared by both builds (extracting `CpuRunner`, `.s` input on
+native) is committed on `master`, since it stands on its own. Only the
+web-specific work happens on a `web` branch, merged into `master` with
 `git merge --no-ff`, then tagged `v0.2.0`. The change of direction is
 visible as one branch in `git log --graph`. The web page links to the repo
 for those who prefer the native build.
@@ -134,7 +134,8 @@ eframe::run_native(... GeckoApp::new(board_state, pending_presses) ...)
 - `assemble(source: &str) -> Result<Vec<u8>, AssembleError>`.
 - Looks for a toolchain by trying these prefixes in order:
   `riscv64-unknown-elf-`, `riscv64-elf-`, `riscv64-linux-gnu-`,
-  `riscv32-unknown-elf-`. The first one whose `as --version` runs wins.
+  `riscv32-unknown-elf-`, `riscv-none-elf-`, `riscv-none-embed-` (the last
+  two are xPack's, common on Windows). The first one whose `as --version` runs wins.
 - In a temporary directory: writes `program.s` and `mmio.ld`, then runs
   1. `as -march=rv32i -mabi=ilp32 program.s -o program.o`
   2. `ld -m elf32lriscv -T mmio.ld program.o -o program.elf`

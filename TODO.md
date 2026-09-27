@@ -199,19 +199,19 @@ what you may have seen elsewhere).*
 
 ## 10. `.s` input + web distribution (`v0.2.0`)
 
-Behavior-preserving refactors (like extracting `CpuRunner`) land on
-`master`; the new features go on a `web` branch.
+Everything shared by both builds (extracting `CpuRunner`, `.s` input)
+lands on `master`; only the web-specific work goes on a `web` branch.
 
 Design: `docs/superpowers/specs/2026-09-25-web-distribution-design.md`.
 `v0.1.0` (tag) is the native app as it was before this section. Keep the
 existing code as it is: changes here are moves or additions.
 
-- [ ] **Extract `CpuRunner`** (`src/runner.rs`): move the CPU-thread
+- [x] **Extract `CpuRunner`** (`src/runner.rs`): move the CPU-thread
       closure's state and one iteration of its outer `loop` into
       `CpuRunner::new` / `run_batch`. `main.rs` spawns the same thread,
       which now just calls `run_batch` in a loop. Native behavior must not
       change. Pure move: keep `std::time` for now.
-- [ ] **Native `.s` input** (`src/assembler/native.rs`): find a local
+- [x] **Native `.s` input** (`src/assembler/native.rs`): find a local
       RISC-V toolchain, run `as` → `ld` → `objcopy` in a temporary
       directory with the embedded `assets/mmio.ld`. `main.rs` picks by
       extension.

@@ -1,7 +1,9 @@
 //! gecko-sim: a fast emulator for the Gecko5 educational SoC (EPFL cs200).
 //!
-//! Usage: `gecko-sim <program.bin>`. The binary is loaded at `MAIN_BASE`
-//! and runs from there as soon as the window opens.
+//! Usage: `gecko-sim <program.s|program.bin>`. A `.s` file is first
+//! assembled with the local RISC-V GNU toolchain (see `assembler::native`).
+//! The binary is loaded at `MAIN_BASE` and runs from there as soon as the
+//! window opens.
 //!
 //! Two threads:
 //! - the CPU thread owns the `Bus` and executes instructions in batches of
@@ -14,9 +16,13 @@
 
 use runner::CpuRunner;
 use std::env::args;
-use std::fs::read;
-use std::thread;
+use std::fs::{read, read_to_string};
+use std::path::Path;
+use std::{process, thread};
 
+use crate::assembler::native::assemble;
+
+mod assembler;
 mod bus;
 mod cpu;
 mod peripherals;
@@ -24,8 +30,13 @@ mod regfile;
 mod runner;
 mod ui;
 
-/// Loads the program given on the command line, starts the CPU thread and
-/// runs the UI until the window is closed.
+/// Loads the program given on the command line (assembling it first if
+/// it's a `.s`), starts the CPU thread and runs the UI until the window is
+/// closed.
+///
+/// If the file is neither a `.s` nor a `.bin`, or if assembling it fails,
+/// the reason is printed on stderr (the assembler's own messages,
+/// verbatim) and the process exits with status 1 before any window opens.
 ///
 /// If the CPU hits an error (invalid instruction, out-of-bounds access),
 /// the error is printed and the CPU thread stops; the window stays open,
@@ -39,8 +50,26 @@ mod ui;
 ///
 /// Panics if no path is given, or if the program doesn't fit in main RAM.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = args().nth(1).expect("usage: gecko-sim <path.bin>");
-    let program = read(path)?;
+    let path = args()
+        .nth(1)
+        .expect("usage: gecko-sim <program.s|program.bin>");
+    let program = match Path::new(&path).extension().and_then(|ext| ext.to_str()) {
+        Some("s") => {
+            let source = read_to_string(&path)?;
+            match assemble(&source) {
+                Ok(bin) => bin,
+                Err(e) => {
+                    eprintln!("{e}");
+                    process::exit(1);
+                }
+            }
+        }
+        Some("bin") => read(&path)?,
+        _ => {
+            eprintln!("unsupported file: {path} (expected a .s or .bin file)");
+            process::exit(1);
+        }
+    };
 
     let mut runner = CpuRunner::new(&program).expect("failed to load program");
     let board_state = runner.board_state();
