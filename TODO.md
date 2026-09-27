@@ -197,7 +197,10 @@ what you may have seen elsewhere).*
       running at full speed, consider a throttle or simply showing the
       "latest visible state" without blocking the CPU thread.
 
-## 10. `.s` input + web distribution (`v0.2.0`, branch `web`)
+## 10. `.s` input + web distribution (`v0.2.0`)
+
+Behavior-preserving refactors (like extracting `CpuRunner`) land on
+`master`; the new features go on a `web` branch.
 
 Design: `docs/superpowers/specs/2026-09-25-web-distribution-design.md`.
 `v0.1.0` (tag) is the native app as it was before this section. Keep the
@@ -207,13 +210,15 @@ existing code as it is: changes here are moves or additions.
       closure's state and one iteration of its outer `loop` into
       `CpuRunner::new` / `run_batch`. `main.rs` spawns the same thread,
       which now just calls `run_batch` in a loop. Native behavior must not
-      change. Switch `Instant` to the `web-time` crate here.
+      change. Pure move: keep `std::time` for now.
 - [ ] **Native `.s` input** (`src/assembler/native.rs`): find a local
       RISC-V toolchain, run `as` → `ld` → `objcopy` in a temporary
       directory with the embedded `assets/mmio.ld`. `main.rs` picks by
       extension.
 - [ ] **Web skeleton**: `cfg` split (`main.rs` native-only, `src/web.rs`
-      wasm-only), Trunk + `index.html` from `eframe_template`. The page
+      wasm-only), Trunk + `index.html` from `eframe_template`,
+      `std::time::Instant` → `web_time::Instant` (the std one panics in
+      the browser). The page
       shows the board, off, with the "drop your file" message.
 - [ ] **Web `.bin` drop**: dropping a `.bin` creates a `CpuRunner` and the
       board runs; `run_batch` inside each frame. CPU errors shown in a

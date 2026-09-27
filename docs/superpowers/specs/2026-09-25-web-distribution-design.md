@@ -38,7 +38,9 @@ Success criteria:
 | `v0.1.0` (tag on `539adb2`, already created) | The native app exactly as it was before this work. `.bin` input only. | `cargo install --git <repo> --tag v0.1.0` |
 | `v0.2.0` | Native app with `.s` input + web build. | Web page on GitHub Pages, or `cargo install --git <repo> --tag v0.2.0` |
 
-All the work happens on a `web` branch, merged into `master` with
+Behavior-preserving refactors (extracting `CpuRunner`) are committed on
+`master`, since they stand on their own. The new features happen on a
+`web` branch, merged into `master` with
 `git merge --no-ff`, then tagged `v0.2.0`. The change of direction is
 visible as one branch in `git log --graph`. The web page links to the repo
 for those who prefer the native build.
