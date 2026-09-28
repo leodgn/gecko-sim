@@ -166,8 +166,8 @@ Dropping a new file at any point restarts from scratch with a fresh
   the Ubuntu `riscv64-unknown-elf` GCC package and with `assemble.js` under
   Node; the two `.bin` files must be byte-identical.
 - **Manual check before each release**: open the deployed page on at least
-  two browsers, drop `gol.s` locally (never committed), run the
-  `freeze-after-speeding-up.md` repro steps.
+  two browsers, drop `gol.s` locally (never committed), click `b2` 6 times then `jr` 5 times
+  (speed 5 used to freeze the board: signed `blt`/`bge` regression).
 
 ## Out of scope
 

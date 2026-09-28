@@ -1,5 +1,8 @@
-//! RV32I core, vendored from `lib-rv32` (`trmckay/lib-rv32`, MIT) with a
-//! bugfix. See `docs/superpowers/specs/2026-09-24-gecko-sim-design.md` for
+//! RV32I core, vendored from [`lib-rv32`](https://github.com/trmckay/lib-rv32)
+//! (commit `61d7737`), Copyright (c) 2021 Trevor McKay, released under the
+//! MIT license: see `LICENSE` in this directory, which applies to the files
+//! copied from it. Modified here: bug fixes, marked `Bug fix (upstream
+//! lib-rv32)` in the code. See `docs/superpowers/specs/2026-09-24-gecko-sim-design.md` for
 //! why we vendor instead of depending on the crate, and what the bug is.
 //!
 //! ## Recipe to fill in this module
