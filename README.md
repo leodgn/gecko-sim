@@ -93,3 +93,10 @@ Bits 0–4 are the directional pad (center, right, left, bottom, top), bits
   error is printed on the terminal and the board freezes on its last
   state.
 - The dip switches are drawn but not connected to anything.
+
+## Credits
+
+The RV32I core in [`src/cpu/`](src/cpu) is adapted from
+[lib-rv32](https://github.com/trmckay/lib-rv32), Copyright (c) 2021
+Trevor McKay, under the MIT license (see [`src/cpu/LICENSE`](src/cpu/LICENSE)).
+It was modified to fix `sub`, `sll`, `blt`/`bge` and `bgeu`.

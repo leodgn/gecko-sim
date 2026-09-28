@@ -236,3 +236,13 @@ existing code as it is: changes here are moves or additions.
 *Rust concepts: moving code into a struct with `&mut self` methods,
 `#[cfg(target_arch = ...)]`, `std::process::Command`, `wasm-bindgen`,
 futures without an async runtime (`spawn_local` + a channel).*
+
+## Known latent bugs (not triggered by `gol.s` today)
+
+- [ ] `auipc` computes `*pc + imm` without `wrapping_add`: panics in debug
+      builds if the sum overflows (e.g. a negative offset from
+      `0x8000_0000`).
+- [ ] `jalr` doesn't clear bit 0 of the target address, as the spec
+      requires.
+- [ ] A `LEDS` command with row 10–14 or column 12–14 indexes out of
+      bounds and panics the CPU thread instead of being ignored.
