@@ -76,9 +76,11 @@ JS glue).
 
 ```
 src/
-  main.rs         — native entry point (cfg not wasm32). Reads the file given
-                    on the command line; assembles it first if it's a .s;
-                    then exactly as today: CPU thread + eframe.
+  main.rs         — crate root: declares the modules and one `main` per
+                    target, each calling its platform's `start`.
+  native.rs       — NEW (cfg not wasm32): what `main` used to do. Reads the
+                    file given on the command line; assembles it first if
+                    it's a .s; CPU thread + eframe window.
   runner.rs       — NEW, shared: CpuRunner (the moved CPU-loop body)
   assembler/
     mod.rs        — NEW: cfg switch between the two backends below

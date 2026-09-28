@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>gecko-sim</title>
+
+    <!-- Trunk: build the Rust crate to wasm and include it. -->
+    <link data-trunk rel="rust" data-wasm-opt="2" />
+    <!-- Trunk: base URL, so the page also works from a sub-path (GitHub Pages). -->
+    <base data-trunk-public-url />
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0c0c0c; /* matches the (slightly translucent) egui canvas, so its edges are invisible */
+        }
+
+        /* Same size as the native window (src/native.rs), centered in the page. */
+        canvas {
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 420px;
+            height: 500px;
+        }
+
+        /* Link to the source, under the board. */
+        .source-link {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 12px;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            color: #b4b4b4;
+            font: 14px sans-serif;
+            text-decoration: none;
+        }
+
+        .source-link:hover {
+            color: #ffffff;
+            border-color: #6e6e6e;
+        }
+    </style>
+</head>
+<body>
+    <!-- The id must match the one in src/web.rs. -->
+    <canvas id="the_canvas_id"></canvas>
+    <a class="source-link" href="https://github.com/leodgn/gecko-sim">Source on GitHub</a>
+</body>
+</html>

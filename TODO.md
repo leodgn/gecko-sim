@@ -215,12 +215,13 @@ existing code as it is: changes here are moves or additions.
       RISC-V toolchain, run `as` → `ld` → `objcopy` in a temporary
       directory with the embedded `assets/mmio.ld`. `main.rs` picks by
       extension.
-- [ ] **Web skeleton**: `cfg` split (`main.rs` native-only, `src/web.rs`
-      wasm-only), Trunk + `index.html` from `eframe_template`,
-      `std::time::Instant` → `web_time::Instant` (the std one panics in
-      the browser). The page
-      shows the board, off, with the "drop your file" message.
-- [ ] **Web `.bin` drop**: dropping a `.bin` creates a `CpuRunner` and the
+- [x] **Web skeleton**: `main.rs` only declares the modules and one
+      `main` per target; the native entry point moved to `src/native.rs`,
+      the web one is `src/web.rs`. Trunk + `index.html` (board centered,
+      link to the repo), `web_time::Instant` on the web only (the std one
+      panics in the browser). The page shows the board, off.
+- [ ] **Web `.bin` drop**: a "drop your `.s` or `.bin` file" message;
+      dropping a `.bin` creates a `CpuRunner` and the
       board runs; `run_batch` inside each frame. CPU errors shown in a
       panel.
 - [ ] **Web `.s` drop**: vendor the binutils wasm files, write
