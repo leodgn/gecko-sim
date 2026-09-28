@@ -86,8 +86,11 @@ src/
     mod.rs        — NEW: cfg switch between the two backends below
     native.rs     — NEW (cfg not wasm32): local binutils through Command
     web.rs        — NEW (cfg wasm32): wasm-bindgen bridge to web/assemble.js
-  web.rs          — NEW (cfg wasm32): web entry point + WebApp (app states
-                    wrapped around the unchanged GeckoApp)
+  web/
+    mod.rs        — NEW (cfg wasm32, or test): `start`, the web entry point
+                    (wasm only); declares `app`
+    app.rs        — NEW: WebApp (app states wrapped around the unchanged
+                    GeckoApp); also compiled for native `cargo test`
   ui.rs, bus.rs, regfile.rs, peripherals/, cpu/   — unchanged
 assets/
   mmio.ld         — the course linker script, embedded with include_str! by

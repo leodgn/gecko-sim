@@ -220,7 +220,7 @@ existing code as it is: changes here are moves or additions.
       the web one is `src/web.rs`. Trunk + `index.html` (board centered,
       link to the repo), `web_time::Instant` on the web only (the std one
       panics in the browser). The page shows the board, off.
-- [ ] **Web `.bin` drop**: a "drop your `.s` or `.bin` file" message;
+- [x] **Web `.bin` drop**: a "drop your `.s` or `.bin` file" message;
       dropping a `.bin` creates a `CpuRunner` and the
       board runs; `run_batch` inside each frame. CPU errors shown in a
       panel.

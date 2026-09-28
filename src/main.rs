@@ -20,7 +20,9 @@ mod ui;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
-#[cfg(target_arch = "wasm32")]
+// Also compiled for tests, so `web::app` is tested by a native `cargo test`
+// (only `web::start` needs the browser).
+#[cfg(any(target_arch = "wasm32", test))]
 mod web;
 
 /// Native entry point: see `native::start`.
