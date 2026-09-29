@@ -215,29 +215,38 @@ existing code as it is: changes here are moves or additions.
       RISC-V toolchain, run `as` → `ld` → `objcopy` in a temporary
       directory with the embedded `assets/mmio.ld`. `main.rs` picks by
       extension.
-- [ ] **Web skeleton**: `cfg` split (`main.rs` native-only, `src/web.rs`
-      wasm-only), Trunk + `index.html` from `eframe_template`,
-      `std::time::Instant` → `web_time::Instant` (the std one panics in
-      the browser). The page
-      shows the board, off, with the "drop your file" message.
-- [ ] **Web `.bin` drop**: dropping a `.bin` creates a `CpuRunner` and the
+- [x] **Web skeleton**: `main.rs` only declares the modules and one
+      `main` per target; the native entry point moved to `src/native.rs`,
+      the web one is `src/web.rs`. Trunk + `index.html` (board centered,
+      link to the repo), `web_time::Instant` on the web only (the std one
+      panics in the browser). The page shows the board, off.
+- [x] **Web `.bin` drop**: a "drop your `.s` or `.bin` file" message;
+      dropping a `.bin` creates a `CpuRunner` and the
       board runs; `run_batch` inside each frame. CPU errors shown in a
       panel.
-- [ ] **Web `.s` drop**: vendor the binutils wasm files, write
+- [x] **Web `.s` drop**: vendor the binutils wasm files, write
       `web/assemble.js`, bridge it from `src/assembler/web.rs` with
       `wasm-bindgen`, poll the result through a channel. Assembler errors
       shown verbatim.
-- [ ] **CI + Pages**: GitHub Action running the tests, the native-vs-web
-      assembler parity check, the Trunk build and the Pages deploy.
-- [ ] **Release**: license (MIT?), README (web link + `cargo install`
-      for both tags), binutils GPLv3 notice on the page, then
-      `git merge --no-ff web` into `master` and tag `v0.3.0`.
+- [x] **CI + Pages**: `.github/workflows/ci.yml` (tests, wasm build,
+      native-vs-web assembler parity on `tests/leds.s`) and
+      `.github/workflows/pages.yml` (Trunk release build, deployed on each
+      push to `master`).
+- [x] **Release**: MIT license, README (web link + `cargo install`),
+      binutils GPLv3 notice on the page, then `git merge --no-ff web` into
+      `master` and tag `v0.3.0`.
 
 *Rust concepts: moving code into a struct with `&mut self` methods,
 `#[cfg(target_arch = ...)]`, `std::process::Command`, `wasm-bindgen`,
 futures without an async runtime (`spawn_local` + a channel).*
 
 ## Known latent bugs (not triggered by `gol.s` today)
+
+- [ ] On a link error, `ld`'s harmless "cannot find entry symbol _start"
+      warning is shown before the real message (both assemblers): filter
+      it out.
+- [ ] A missing input file prints `Error: Os { code: 2, ... }` (Debug
+      format, no file name) instead of a readable message.
 
 - [ ] `auipc` computes `*pc + imm` without `wrapping_add`: panics in debug
       builds if the sum overflows (e.g. a negative offset from

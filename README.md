@@ -1,15 +1,22 @@
 # gecko-sim
 
 A fast emulator for the Gecko5 board: an RV32I CPU, a 12×10 RGB LED
-matrix, four 7-segment digits and ten push buttons. Give it a program, a
-window opens, the program runs.
+matrix, four 7-segment digits and ten push buttons. Give it a program, it
+runs.
 
-## Install
+## In the browser
+
+**<https://leodgn.github.io/gecko-sim/>**: nothing to install. Drop a `.s`
+or `.bin` file on the page. `.s` files are assembled in the browser with
+GNU binutils compiled to WebAssembly; nothing is uploaded. Dropping another
+file restarts the board.
+
+## Native
 
 Requires [Rust](https://rustup.rs).
 
 ```sh
-cargo install --git https://github.com/leodgn/gecko-sim --tag v0.2.0
+cargo install --git https://github.com/leodgn/gecko-sim --tag v0.3.0
 ```
 
 To run `.s` files, a RISC-V GNU toolchain must also be on your `PATH`.
@@ -18,7 +25,7 @@ The first one found among these prefixes is used: `riscv64-unknown-elf-`,
 `riscv-none-elf-`, `riscv-none-embed-`. Running `.bin` files needs
 nothing else.
 
-## Usage
+### Usage
 
 ```sh
 gecko-sim program.s     # assembled and linked, then run
@@ -90,9 +97,13 @@ Bits 0–4 are the directional pad (center, right, left, bottom, top), bits
 
 - No debugger: no breakpoints, no stepping.
 - If the CPU hits an error (invalid instruction, bad memory access), the
-  error is printed on the terminal and the board freezes on its last
-  state.
+  error is shown (on the page, or on the terminal for the native build)
+  and the board freezes on its last state.
 - The dip switches are drawn but not connected to anything.
+
+## License
+
+gecko-sim is under the MIT license: see [`LICENSE`](LICENSE).
 
 ## Credits
 
@@ -100,3 +111,8 @@ The RV32I core in [`src/cpu/`](src/cpu) is adapted from
 [lib-rv32](https://github.com/trmckay/lib-rv32), Copyright (c) 2021
 Trevor McKay, under the MIT license (see [`src/cpu/LICENSE`](src/cpu/LICENSE)).
 It was modified to fix `sub`, `sll`, `blt`/`bge` and `bgeu`.
+
+The web version's assembler is [GNU binutils](https://www.gnu.org/software/binutils/)
+(`as`, `ld`, `objcopy`), compiled to WebAssembly by
+[riscv-online-asm](https://github.com/racerxdl/riscv-online-asm), under the
+GNU GPL v3: see [`web/binutils/`](web/binutils) for its licenses and source.

@@ -15,7 +15,12 @@ use crate::regfile::RegisterFile;
 use crate::ui::BoardState;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// `std::time::Instant` panics in the browser: the web build uses web-time's.
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 /// How long one `run_batch` call executes before publishing the board state.
 const BATCH_DURATION: Duration = Duration::from_millis(3);

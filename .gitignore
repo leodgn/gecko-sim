@@ -6,3 +6,6 @@
 
 /ressources
 /examples
+
+# Trunk build output
+/dist

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (native + wasm)
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The native assembler tests run the real RISC-V GNU toolchain; the
+      # other packages are what eframe needs to build on Linux.
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils-riscv64-unknown-elf \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+
+      - name: Tests
+        run: cargo test
+
+      - name: Web build
+        run: cargo build --target wasm32-unknown-unknown
+
+      # The browser assembler (web/assemble.js, binutils compiled to wasm)
+      # must produce the same binary as the native toolchain.
+      - name: Assembler parity (native vs web)
+        run: |
+          riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 tests/leds.s -o leds.o
+          riscv64-unknown-elf-ld -m elf32lriscv -T assets/mmio.ld leds.o -o leds.elf
+          riscv64-unknown-elf-objcopy -O binary leds.elf native.bin
+          node tests/assembler-parity.mjs tests/leds.s web.bin
+          cmp native.bin web.bin
