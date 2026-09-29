@@ -1,7 +1,10 @@
 [package]
 name = "gecko-sim"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
+description = "A fast emulator for the Gecko5 board (RV32I), native and in the browser"
+license = "MIT"
+repository = "https://github.com/leodgn/gecko-sim"
 
 [dependencies]
 eframe = "0.35.0"

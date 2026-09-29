@@ -228,11 +228,13 @@ existing code as it is: changes here are moves or additions.
       `web/assemble.js`, bridge it from `src/assembler/web.rs` with
       `wasm-bindgen`, poll the result through a channel. Assembler errors
       shown verbatim.
-- [ ] **CI + Pages**: GitHub Action running the tests, the native-vs-web
-      assembler parity check, the Trunk build and the Pages deploy.
-- [ ] **Release**: license (MIT?), README (web link + `cargo install`
-      for both tags), binutils GPLv3 notice on the page, then
-      `git merge --no-ff web` into `master` and tag `v0.3.0`.
+- [x] **CI + Pages**: `.github/workflows/ci.yml` (tests, wasm build,
+      native-vs-web assembler parity on `tests/leds.s`) and
+      `.github/workflows/pages.yml` (Trunk release build, deployed on each
+      push to `master`).
+- [x] **Release**: MIT license, README (web link + `cargo install`),
+      binutils GPLv3 notice on the page, then `git merge --no-ff web` into
+      `master` and tag `v0.3.0`.
 
 *Rust concepts: moving code into a struct with `&mut self` methods,
 `#[cfg(target_arch = ...)]`, `std::process::Command`, `wasm-bindgen`,

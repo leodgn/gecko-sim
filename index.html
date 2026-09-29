@@ -33,17 +33,33 @@
             height: 500px;
         }
 
-        /* Link to the source, under the board. */
-        .source-link {
+        /* Under the board: link to the source, licenses. */
+        .footer {
             position: absolute;
-            bottom: 16px;
+            bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
+            text-align: center;
+            color: #7a7a7a;
+            font: 12px sans-serif;
+            white-space: nowrap;
+        }
+
+        .footer p {
+            margin: 8px 0 0;
+        }
+
+        .footer p a {
+            color: #9a9a9a;
+        }
+
+        .source-link {
+            display: inline-block;
             padding: 6px 12px;
             border: 1px solid #3c3c3c;
             border-radius: 4px;
             color: #b4b4b4;
-            font: 14px sans-serif;
+            font-size: 14px;
             text-decoration: none;
         }
 
@@ -56,6 +72,12 @@
 <body>
     <!-- The id must match the one in src/web.rs. -->
     <canvas id="the_canvas_id"></canvas>
-    <a class="source-link" href="https://github.com/leodgn/gecko-sim">Source on GitHub</a>
+    <footer class="footer">
+        <a class="source-link" href="https://github.com/leodgn/gecko-sim">Source on GitHub</a>
+        <p>
+            MIT license. Assembler: GNU binutils, GPLv3
+            (<a href="binutils/README.md">source and licenses</a>).
+        </p>
+    </footer>
 </body>
 </html>
