@@ -224,7 +224,7 @@ existing code as it is: changes here are moves or additions.
       dropping a `.bin` creates a `CpuRunner` and the
       board runs; `run_batch` inside each frame. CPU errors shown in a
       panel.
-- [ ] **Web `.s` drop**: vendor the binutils wasm files, write
+- [x] **Web `.s` drop**: vendor the binutils wasm files, write
       `web/assemble.js`, bridge it from `src/assembler/web.rs` with
       `wasm-bindgen`, poll the result through a channel. Assembler errors
       shown verbatim.
@@ -239,6 +239,12 @@ existing code as it is: changes here are moves or additions.
 futures without an async runtime (`spawn_local` + a channel).*
 
 ## Known latent bugs (not triggered by `gol.s` today)
+
+- [ ] On a link error, `ld`'s harmless "cannot find entry symbol _start"
+      warning is shown before the real message (both assemblers): filter
+      it out.
+- [ ] A missing input file prints `Error: Os { code: 2, ... }` (Debug
+      format, no file name) instead of a readable message.
 
 - [ ] `auipc` computes `*pc + imm` without `wrapping_add`: panics in debug
       builds if the sum overflows (e.g. a negative offset from

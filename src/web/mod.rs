@@ -38,7 +38,7 @@ pub fn start() {
             .start(
                 canvas,
                 eframe::WebOptions::default(),
-                Box::new(|_cc| Ok(Box::new(app::WebApp::new()))),
+                Box::new(|_cc| Ok(Box::new(app::WebApp::new(crate::assembler::web::assemble)))),
             )
             .await
             .expect("failed to start eframe");

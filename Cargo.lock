@@ -1176,8 +1176,10 @@ name = "gecko-sim"
 version = "0.2.0"
 dependencies = [
  "eframe",
+ "js-sys",
  "log",
  "tempfile",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "web-time",

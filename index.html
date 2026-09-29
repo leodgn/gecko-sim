@@ -9,6 +9,8 @@
     <link data-trunk rel="rust" data-wasm-opt="2" />
     <!-- Trunk: base URL, so the page also works from a sub-path (GitHub Pages). -->
     <base data-trunk-public-url />
+    <!-- Trunk: copy the wasm binutils used to assemble .s files (web/assemble.js). -->
+    <link data-trunk rel="copy-dir" href="web/binutils" />
 
     <style>
         html, body {
